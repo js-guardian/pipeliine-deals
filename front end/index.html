@@ -1,0 +1,1225 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Guardian Pipeline</title>
+<meta name="viewport" content="width=1280" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400;1,9..40,500;1,9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+<script>
+  // Suppress noisy Recharts defaultProps deprecation warnings (library-internal, not actionable)
+  (function(){
+    const orig = console.error;
+    console.error = function(...args){
+      const s = String(args[0]||"");
+      if (s.indexOf("defaultProps will be removed") !== -1) return;
+      return orig.apply(console, args);
+    };
+  })();
+</script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<style>
+  :root {
+    /* New palette */
+    --c-cyan: #2FC9FF;
+    --c-blue1: #4E95D9;
+    --c-navy: #3B5279;
+    --c-blue2: #2F5597;
+    --c-blue3: #2E75B6;
+    --c-gray1: #AFABAB;
+    --c-gray2: #D0CECE;
+    --c-gray3: #8592AA;
+    --c-blueSoft: #6FA0CD;
+
+    /* Tokens */
+    --bg: #F5F6FA;
+    --surface: #FFFFFF;
+    --surface-2: #EEF1F6;
+    --border: #E3E7EE;
+    --border-2: #D6DCE6;
+    --text: #1B2233;
+    --text-2: #6B7385;
+    --primary: #3B5279;        /* navy — used in place of old --gold */
+    --primary-soft: rgba(59,82,121,0.08);
+    --gold: #3B5279;           /* alias for legacy refs */
+    --gold-soft: rgba(59,82,121,0.08);
+  }
+  html, body { background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  body { font-feature-settings: "ss01","cv11"; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: 'DM Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar::-webkit-scrollbar-thumb { background: #C6CDDB; border-radius: 4px; }
+  .scrollbar::-webkit-scrollbar-track { background: transparent; }
+
+  /* drawer animation */
+  .drawer-enter { transform: translateX(100%); }
+  .drawer-enter-active { transform: translateX(0); transition: transform 280ms cubic-bezier(.2,.8,.2,1); }
+  .drawer-exit-active { transform: translateX(100%); transition: transform 240ms cubic-bezier(.4,.0,.6,1); }
+
+  .modal-overlay { animation: fade 160ms ease-out; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .modal-card { animation: pop 200ms cubic-bezier(.2,.8,.2,1); }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+  /* form controls */
+  .gp-input, .gp-select, .gp-textarea {
+    background: #FFFFFF;
+    border: 1px solid var(--border-2);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    width: 100%;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .gp-input:focus, .gp-select:focus, .gp-textarea:focus {
+    outline: none;
+    border-color: var(--c-blue2);
+    box-shadow: 0 0 0 3px rgba(47,85,151,0.12);
+  }
+  .gp-input::placeholder, .gp-textarea::placeholder { color: #9AA3B5; }
+  .gp-select { appearance: none; -webkit-appearance: none; background-image:
+    linear-gradient(45deg, transparent 50%, #8592AA 50%),
+    linear-gradient(135deg, #8592AA 50%, transparent 50%);
+    background-position: calc(100% - 14px) 14px, calc(100% - 9px) 14px;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 26px;
+  }
+  .gp-label { font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: block; }
+
+  /* keyboard focus rings */
+  button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--c-blue2); outline-offset: 2px; }
+
+  /* recharts tooltip override */
+  .recharts-default-tooltip { background: #FFFFFF !important; border: 1px solid var(--border-2) !important; border-radius: 6px; box-shadow: 0 6px 20px rgba(20,30,60,0.08) !important; }
+  .recharts-tooltip-label { color: var(--text) !important; font-weight: 600 !important; }
+  .recharts-tooltip-item { color: var(--text-2) !important; }
+
+  /* toggle */
+  .gp-toggle { width: 36px; height: 20px; border-radius: 999px; background: #C6CDDB; position: relative; transition: background 160ms; cursor: pointer; }
+  .gp-toggle.on { background: var(--c-navy); }
+  .gp-toggle .dot { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #FFFFFF; transition: left 160ms; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+  .gp-toggle.on .dot { left: 18px; background: #FFFFFF; }
+
+  .row-hover:hover { background: var(--surface-2); }
+  .row-selected { background: rgba(59,82,121,0.06); box-shadow: inset 3px 0 0 var(--c-navy); }
+
+  /* status dropdown */
+  .status-pop { background: #FFFFFF; border: 1px solid var(--border-2); box-shadow: 0 14px 40px rgba(20,30,60,.12); }
+
+  /* tabs */
+  .tab { padding: 8px 12px; font-size: 12px; color: var(--text-2); cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--text); border-bottom-color: var(--c-navy); font-weight: 600; }
+
+  /* sidebar nav item */
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 6px; color: rgba(255,255,255,0.72); font-size: 13px; cursor: pointer; }
+  .nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .nav-item.active { background: rgba(255,255,255,0.12); color: #fff; }
+  .nav-item.active svg { stroke: var(--c-cyan); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useMemo, useEffect, useRef } = React;
+const RC = window.Recharts;
+const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid } = RC;
+
+// ---------- DATA ----------
+const PALETTE = {
+  cyan: "#2FC9FF",
+  blue1: "#4E95D9",
+  navy: "#3B5279",
+  blue2: "#2F5597",
+  blue3: "#2E75B6",
+  gray1: "#AFABAB",
+  gray2: "#D0CECE",
+  gray3: "#8592AA",
+  blueSoft: "#6FA0CD",
+};
+
+const STATUS = {
+  "DESCRIÇÃO RECEBIDA": "#8592AA",
+  "EM ANÁLISE":         "#6FA0CD",
+  "REUNIÃO REALIZADA":  "#2E75B6",
+  "PROPOSTA ENVIADA":   "#2FC9FF",
+  "EM NEGOCIAÇÃO":      "#4E95D9",
+  "FECHADO":            "#3B5279",
+  "DESCARTADO":         "#AFABAB",
+};
+const STATUS_ORDER = Object.keys(STATUS);
+const STATUS_SHORT = {
+  "DESCRIÇÃO RECEBIDA": "DESC.",
+  "EM ANÁLISE": "ANÁLISE",
+  "REUNIÃO REALIZADA": "REUNIÃO",
+  "PROPOSTA ENVIADA": "PROPOSTA",
+  "EM NEGOCIAÇÃO": "NEGOC.",
+  "FECHADO": "FECHADO",
+  "DESCARTADO": "DESCART.",
+};
+
+const PERFIL_COLORS = {
+  "LOGÍSTICA":  "#3B5279",
+  "OFFICE":     "#2E75B6",
+  "INDUSTRIAL": "#4E95D9",
+  "RETAIL":     "#6FA0CD",
+  "GALPÃO":     "#2F5597",
+  "MISTO":      "#8592AA",
+  "OUTROS":     "#AFABAB",
+};
+const PERFIL_OPTS = ["LOGÍSTICA","OFFICE","INDUSTRIAL","RETAIL","GALPÃO","MISTO"];
+const ESTRATEGIA_OPTS = ["COTAS","CASH","CETIPADO"];
+const VEICULO_OPTS = ["GARE","CETIPADO","DIRETO"];
+const VENDEDOR_OPTS = ["FUNDO","BROKER","CONSULTORIA","PROPRIETÁRIO DIRETO","OUTRO"];
+const RESP_OPTS = ["JS","CM","GVM"];
+
+const SEED_DEALS = [
+  { produto: "Galpão Cajamar — Bloco A", status: "EM NEGOCIAÇÃO",
+    responsavel: "CM", perfil_ativo: "LOGÍSTICA",
+    endereco: "Av. Marginal, 1200 — Cajamar, SP",
+    aluguel_mensal: 420000, preco_pedido: 48000000,
+    ultimo_valor: 45000000, yield_ultima_proposta: 0.105,
+    area_locavel: 42800, ocupacao: 1.0,
+    estrategia: "COTAS", veiculo_oferta: "GARE",
+    perfil_vendedor: "FUNDO", broker_envolvido: false,
+    nome_broker: "",
+    principais_locatarios: "AMAZON, SHOPEE",
+    proximos_passos: "Aguardando laudo de avaliação do ativo.",
+    historico_negociacoes: "Contato inicial em março. Visita realizada.",
+    updated_at: "2026-04-27T10:00:00" },
+  { produto: "Torre Office Faria Lima", status: "PROPOSTA ENVIADA",
+    responsavel: "JS", perfil_ativo: "OFFICE",
+    endereco: "Av. Brig. Faria Lima, 3500 — São Paulo, SP",
+    aluguel_mensal: 920000, preco_pedido: 120000000,
+    ultimo_valor: 115000000, yield_ultima_proposta: 0.092,
+    area_locavel: 18500, ocupacao: 0.94,
+    estrategia: "CASH", veiculo_oferta: "DIRETO",
+    perfil_vendedor: "PROPRIETÁRIO DIRETO", broker_envolvido: true,
+    nome_broker: "JLL Brasil",
+    principais_locatarios: "ITAÚ, AMBEV",
+    proximos_passos: "Reunião de alinhamento na quinta-feira.",
+    historico_negociacoes: "Proposta enviada em 15/04. Aguardando retorno.",
+    updated_at: "2026-04-26T16:30:00" },
+  { produto: "CD Guarulhos — Amazon", status: "EM ANÁLISE",
+    responsavel: "GVM", perfil_ativo: "LOGÍSTICA",
+    endereco: "Rod. Presidente Dutra, km 228 — Guarulhos, SP",
+    aluguel_mensal: 780000, preco_pedido: 85000000,
+    ultimo_valor: 82000000, yield_ultima_proposta: 0.110,
+    area_locavel: 68000, ocupacao: 1.0,
+    estrategia: "COTAS", veiculo_oferta: "GARE",
+    perfil_vendedor: "FUNDO", broker_envolvido: true,
+    nome_broker: "CBRE",
+    principais_locatarios: "AMAZON",
+    proximos_passos: "Due diligence em andamento. Prazo: 10/05.",
+    historico_negociacoes: "Recebido via CBRE em 01/04. Análise iniciada.",
+    updated_at: "2026-04-24T09:15:00" },
+  { produto: "Loja Shopee Osasco", status: "DESCRIÇÃO RECEBIDA",
+    responsavel: "CM", perfil_ativo: "RETAIL",
+    endereco: "Av. dos Autonomistas, 1500 — Osasco, SP",
+    aluguel_mensal: null, preco_pedido: null,
+    ultimo_valor: null, yield_ultima_proposta: null,
+    area_locavel: 4200, ocupacao: 1.0,
+    estrategia: "", veiculo_oferta: "",
+    perfil_vendedor: "BROKER", broker_envolvido: true,
+    nome_broker: "Cushman & Wakefield",
+    principais_locatarios: "SHOPEE",
+    proximos_passos: "Triagem inicial — verificar fit com mandato.",
+    historico_negociacoes: "Recebido por email em 25/04.",
+    updated_at: "2026-04-25T14:00:00" },
+  { produto: "Industrial Santo André", status: "DESCARTADO",
+    responsavel: "JS", perfil_ativo: "INDUSTRIAL",
+    endereco: "Rua das Indústrias, 800 — Santo André, SP",
+    aluguel_mensal: 148000, preco_pedido: 22000000,
+    ultimo_valor: 20000000, yield_ultima_proposta: 0.081,
+    area_locavel: 12400, ocupacao: 0.75,
+    estrategia: "CASH", veiculo_oferta: "DIRETO",
+    perfil_vendedor: "PROPRIETÁRIO DIRETO", broker_envolvido: false,
+    nome_broker: "",
+    principais_locatarios: "METALÚRGICA ABC",
+    proximos_passos: "Descartado — yield abaixo do mínimo aceitável.",
+    historico_negociacoes: "Analisado em março. Yield de 8,1% abaixo do floor.",
+    updated_at: "2026-04-20T11:00:00" },
+  { produto: "Parque Logístico Jundiaí", status: "REUNIÃO REALIZADA",
+    responsavel: "GVM", perfil_ativo: "LOGÍSTICA",
+    endereco: "Rod. Anhanguera, km 62 — Jundiaí, SP",
+    aluguel_mensal: 610000, preco_pedido: 67000000,
+    ultimo_valor: 65000000, yield_ultima_proposta: 0.109,
+    area_locavel: 54000, ocupacao: 0.88,
+    estrategia: "COTAS", veiculo_oferta: "GARE",
+    perfil_vendedor: "FUNDO", broker_envolvido: false,
+    nome_broker: "",
+    principais_locatarios: "MERCADO LIVRE, DHL",
+    proximos_passos: "Elaborar proposta formal até 30/04.",
+    historico_negociacoes: "Reunião com gestora realizada em 22/04.",
+    updated_at: "2026-04-22T15:45:00" },
+  { produto: "Edifício Paulista 1000", status: "EM NEGOCIAÇÃO",
+    responsavel: "JS", perfil_ativo: "OFFICE",
+    endereco: "Av. Paulista, 1000 — São Paulo, SP",
+    aluguel_mensal: 540000, preco_pedido: 72000000,
+    ultimo_valor: 68000000, yield_ultima_proposta: 0.090,
+    area_locavel: 9800, ocupacao: 0.91,
+    estrategia: "CETIPADO", veiculo_oferta: "CETIPADO",
+    perfil_vendedor: "CONSULTORIA", broker_envolvido: true,
+    nome_broker: "Savills",
+    principais_locatarios: "BRADESCO, TOTVS",
+    proximos_passos: "Negociando deságio de 5% sobre último valor.",
+    historico_negociacoes: "Oferta feita em 10/04. Contraproposta recebida.",
+    updated_at: "2026-04-27T08:30:00" },
+  { produto: "Centro Distribuição Campinas", status: "FECHADO",
+    responsavel: "CM", perfil_ativo: "LOGÍSTICA",
+    endereco: "Rod. Dom Pedro I, km 140 — Campinas, SP",
+    aluguel_mensal: 890000, preco_pedido: 98000000,
+    ultimo_valor: 96000000, yield_ultima_proposta: 0.112,
+    area_locavel: 76000, ocupacao: 1.0,
+    estrategia: "COTAS", veiculo_oferta: "GARE",
+    perfil_vendedor: "FUNDO", broker_envolvido: false,
+    nome_broker: "",
+    principais_locatarios: "MAGAZINE LUIZA, VIA",
+    proximos_passos: "Deal fechado — aguardando assinatura do contrato.",
+    historico_negociacoes: "Fechado em 18/04 após 6 semanas de negociação.",
+    updated_at: "2026-04-18T17:00:00" },
+].map((d, i) => ({ id: `d-${i+1}`, ...d }));
+
+const TODAY = new Date("2026-04-27T18:00:00");
+
+// ---------- FORMATTERS ----------
+const fmtBRL = (n) => n == null ? "—" : "R$ " + Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+const fmtMillions = (n) => {
+  if (n == null) return "—";
+  const m = n / 1_000_000;
+  if (m >= 100) return `R$ ${Math.round(m)}M`;
+  return `R$ ${m.toFixed(m >= 10 ? 0 : 1).replace(".", ",")}M`;
+};
+const fmtPct = (n, decimals=1) => n == null ? "—" : (n*100).toFixed(decimals).replace(".", ",") + "%";
+const fmtPctInt = (n) => n == null ? "—" : Math.round(n*100) + "%";
+const fmtArea = (n) => n == null ? "—" : Number(n).toLocaleString("pt-BR") + " m²";
+
+const relTime = (iso) => {
+  const t = new Date(iso);
+  const diffMs = TODAY - t;
+  const mins = Math.floor(diffMs / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (mins < 60) return `há ${Math.max(1,mins)}min`;
+  if (hours < 24) return `há ${hours}h`;
+  if (days === 1) return "ontem";
+  if (days < 7) return `há ${days}d`;
+  if (days < 30) return `há ${Math.floor(days/7)}sem`;
+  return `há ${Math.floor(days/30)}mes`;
+};
+
+// ---------- ICONS (simple inline SVGs) ----------
+const Icon = ({ d, size=16, stroke="currentColor", fill="none" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+);
+const IconGrid = (p) => <Icon {...p} d={<><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></>} />;
+const IconList = (p) => <Icon {...p} d={<><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></>} />;
+const IconSearch = (p) => <Icon {...p} d={<><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>} />;
+const IconClose = (p) => <Icon {...p} d={<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>} />;
+const IconChevron = (p) => <Icon {...p} d={<polyline points="6 9 12 15 18 9"/>} />;
+const IconLogout = (p) => <Icon {...p} d={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>} />;
+const IconPlus = (p) => <Icon {...p} d={<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>} />;
+const IconEdit = (p) => <Icon {...p} d={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>} />;
+
+// ---------- SHARED COMPONENTS ----------
+function StatusBadge({ status, dot=true, onClick, hint }) {
+  const c = STATUS[status] || "#8592AA";
+  return (
+    <span
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium tracking-wide select-none"
+      style={{
+        background: `${c}1a`,
+        color: c,
+        border: `1px solid ${c}40`,
+        cursor: onClick ? "pointer" : "default",
+      }}
+      title={hint}
+    >
+      {dot && <span className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />}
+      {status}
+      {onClick && <IconChevron size={11} />}
+    </span>
+  );
+}
+
+function RespBadge({ r }) {
+  return (
+    <span className="mono inline-flex items-center justify-center text-[11px] tracking-wider"
+      style={{ background: "#EEF1F6", color: "#3B5279", borderRadius: 4, padding: "3px 7px", border: "1px solid #D6DCE6" }}>
+      {r}
+    </span>
+  );
+}
+
+// ---------- SIDEBAR ----------
+function Sidebar({ view, setView }) {
+  return (
+    <aside className="flex flex-col" style={{ width: 168, background: "#3B5279", height: "100vh", position: "sticky", top: 0 }}>
+      <div className="px-4 pt-5 pb-6">
+        <div className="text-[22px] leading-none italic" style={{ fontWeight: 600, color: "#FFFFFF", fontFamily: "DM Sans" }}>
+          Guardian
+        </div>
+        <div className="text-[10px] tracking-[0.18em] mt-1" style={{ color: "#2FC9FF" }}>PIPELINE</div>
+      </div>
+
+      <nav className="px-2 flex flex-col gap-0.5">
+        <div className={`nav-item ${view === "dashboard" ? "active" : ""}`} onClick={() => setView("dashboard")}>
+          <IconGrid size={15} /> Dashboard
+        </div>
+        <div className={`nav-item ${view === "deals" ? "active" : ""}`} onClick={() => setView("deals")}>
+          <IconList size={15} /> Deals
+        </div>
+      </nav>
+
+      <div className="mt-auto px-3 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+        <div className="flex items-center gap-2">
+          <div className="mono text-[11px] flex items-center justify-center"
+               style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(47,201,255,0.18)", color: "#2FC9FF", border: "1px solid rgba(47,201,255,0.4)" }}>
+            CM
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] truncate" style={{ color: "#fff" }}>Carlos M.</div>
+            <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.6)" }}>Analista</div>
+          </div>
+        </div>
+        <button className="mt-3 w-full flex items-center gap-2 text-[12px] py-1.5 px-2 rounded" style={{ color: "rgba(255,255,255,0.7)" }}>
+          <IconLogout size={13} /> Sair
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ---------- DASHBOARD ----------
+function KpiCard({ label, value, color, sub, delta }) {
+  const positive = typeof delta === "number" && delta >= 0;
+  const deltaColor = positive ? "#16a34a" : "#dc2626";
+  return (
+    <div className="rounded-lg p-5" style={{ background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(20,30,60,0.03)" }}>
+      <div className="text-[11px] uppercase tracking-[0.1em]" style={{ color: "var(--text-2)" }}>{label}</div>
+      <div className="mt-3 flex items-end justify-between gap-2">
+        <div className="mono leading-none" style={{ fontSize: 32, color, fontWeight: 600 }}>{value}</div>
+        {typeof delta === "number" && (
+          <div className="mono inline-flex items-center gap-1 text-[12px]" style={{ color: deltaColor, fontWeight: 600, paddingBottom: 3 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={deltaColor} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              {positive
+                ? <><polyline points="4 17 10 11 14 15 20 7"/><polyline points="14 7 20 7 20 13"/></>
+                : <><polyline points="4 7 10 13 14 9 20 17"/><polyline points="14 17 20 17 20 11"/></>}
+            </svg>
+            {positive ? "+" : ""}{delta.toFixed(1).replace(".", ",")}%
+          </div>
+        )}
+      </div>
+      {sub && <div className="text-[11px] mt-2" style={{ color: "var(--text-2)" }}>{sub}</div>}
+    </div>
+  );
+}
+
+function DashboardPage({ deals }) {
+  const total = deals.length;
+  const negoc = deals.filter(d => d.status === "EM NEGOCIAÇÃO").length;
+  const volumeNegoc = deals.filter(d => d.status === "EM NEGOCIAÇÃO").reduce((s,d) => s + (d.preco_pedido || 0), 0);
+  const volume = deals.reduce((s,d) => s + (d.preco_pedido || 0), 0);
+  const fechadosMes = deals.filter(d => d.status === "FECHADO" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear()).length;
+  const volumeFechadosMes = deals
+    .filter(d => d.status === "FECHADO" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear())
+    .reduce((s,d) => s + (d.preco_pedido || 0), 0);
+
+  // 1. Distribuição de Propostas (volume financeiro R$ M)
+  const propostasMap = [
+    { key: "ANÁLISE",     status: "EM ANÁLISE",       label: "Analisadas",     color: PALETTE.blueSoft },
+    { key: "ENVIADAS",   status: "PROPOSTA ENVIADA", label: "Enviadas",       color: PALETTE.cyan },
+    { key: "NEGOCIAÇÃO", status: "EM NEGOCIAÇÃO",    label: "Em Negociação",   color: PALETTE.blue1 },
+    { key: "FECHADAS",   status: "FECHADO",          label: "Fechadas",       color: PALETTE.navy },
+    { key: "DESCARTADAS",status: "DESCARTADO",       label: "Descartadas",    color: PALETTE.gray1 },
+  ];
+  const propostas = propostasMap.map(m => ({
+    name: m.label,
+    value: +(deals.filter(d => d.status === m.status).reduce((s,d) => s + (d.preco_pedido || 0), 0) / 1_000_000).toFixed(1),
+    color: m.color
+  }));
+
+  // 2. Volume por tipologia (R$ M)
+  const tipologias = {};
+  deals.forEach(d => {
+    const k = d.perfil_ativo || "OUTROS";
+    tipologias[k] = (tipologias[k] || 0) + (d.preco_pedido || 0);
+  });
+  const volTipologia = Object.entries(tipologias)
+    .map(([k, v]) => ({ name: k, value: +(v/1_000_000).toFixed(1), color: PERFIL_COLORS[k] || PALETTE.gray3 }))
+    .sort((a,b) => b.value - a.value);
+
+  // 3. Forma de aquisição (R$ M) — Dinheiro / Cotas / Misto
+  const aquisicaoBuckets = { "Dinheiro": 0, "Cotas": 0, "Misto": 0 };
+  deals.forEach(d => {
+    const e = (d.estrategia || "").toUpperCase();
+    let bucket = "Misto";
+    if (e === "CASH") bucket = "Dinheiro";
+    else if (e === "COTAS") bucket = "Cotas";
+    else if (e === "CETIPADO" || !e) bucket = "Misto";
+    aquisicaoBuckets[bucket] += (d.preco_pedido || 0);
+  });
+  const aquisicao = [
+    { name: "Dinheiro", value: +(aquisicaoBuckets["Dinheiro"]/1_000_000).toFixed(1), color: PALETTE.navy },
+    { name: "Cotas",    value: +(aquisicaoBuckets["Cotas"]/1_000_000).toFixed(1),    color: PALETTE.blue3 },
+    { name: "Misto",    value: +(aquisicaoBuckets["Misto"]/1_000_000).toFixed(1),    color: PALETTE.cyan },
+  ];
+  const aquisicaoTotal = aquisicao.reduce((s,d) => s + d.value, 0);
+
+  // 4. Volume por responsável (analisado vs fechado, R$ M)
+  const respMap = {};
+  RESP_OPTS.forEach(r => respMap[r] = { name: r, analisado: 0, fechado: 0 });
+  deals.forEach(d => {
+    if (!respMap[d.responsavel]) return;
+    const v = (d.preco_pedido || 0) / 1_000_000;
+    respMap[d.responsavel].analisado += v;
+    if (d.status === "FECHADO") respMap[d.responsavel].fechado += v;
+  });
+  const volResp = Object.values(respMap).map(o => ({
+    name: o.name,
+    analisado: +o.analisado.toFixed(1),
+    fechado: +o.fechado.toFixed(1),
+  }));
+
+  // 5. Deals originados por broker (R$ M)
+  const brokers = {};
+  deals.forEach(d => {
+    if (!d.broker_envolvido || !d.nome_broker) return;
+    brokers[d.nome_broker] = (brokers[d.nome_broker] || 0) + (d.preco_pedido || 0);
+  });
+  const brokerData = Object.entries(brokers)
+    .map(([k, v]) => ({ name: k, value: +(v/1_000_000).toFixed(1) }))
+    .sort((a,b) => b.value - a.value);
+
+  return (
+    <div className="px-8 py-7">
+      <div className="flex items-baseline justify-between mb-1">
+        <h1 className="text-[20px]" style={{ fontWeight: 600, color: "var(--text)" }}>Dashboard</h1>
+        <div className="text-[12px]" style={{ color: "var(--text-2)" }}>
+          <span className="mono">27 abr 2026</span> · visão geral do pipeline
+        </div>
+      </div>
+      <div className="text-[13px] mb-6" style={{ color: "var(--text-2)" }}>
+        Indicadores consolidados de todos os ativos em pipeline ativo.
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <KpiCard label="Total de Deals" value={total} color={PALETTE.navy} sub="ativos no pipeline" delta={12.5} />
+        <KpiCard label="Em Negociação" value={`R$ ${(volumeNegoc/1_000_000).toFixed(0)}M`} color={PALETTE.blue1} sub="volume financeiro em negociação" delta={8.3} />
+        <KpiCard label="Volume Total" value={`R$ ${(volume/1_000_000).toFixed(0)}M`} color={PALETTE.blue3} sub="soma de preços pedidos" delta={-3.2} />
+        <KpiCard label="Fechados este mês" value={`R$ ${(volumeFechadosMes/1_000_000).toFixed(0)}M`} color={PALETTE.cyan} sub="volume financeiro · abril/2026" delta={24.7} />
+      </div>
+
+      {/* Row 1: Propostas + Tipologia */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <ChartCard
+          title="Distribuição de Propostas"
+          subtitle="R$ Milhões por estágio">
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={propostas} margin={{ top: 14, right: 12, bottom: 4, left: -10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" vertical={false} />
+              <XAxis dataKey="name" tick={{ fill: "#6B7385", fontSize: 11 }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} />
+              <YAxis tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}M`} />
+              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${v}M`, "Volume"]} />
+              <Bar dataKey="value" radius={[4,4,0,0]}>
+                {propostas.map((e,i) => <Cell key={i} fill={e.color} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard
+          title="Volume por Tipologia de Ativo"
+          subtitle="R$ Milhões por tipologia">
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={volTipologia} layout="vertical" margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" horizontal={false} />
+              <XAxis type="number" tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} tickFormatter={(v) => `${v}M`} />
+              <YAxis type="category" dataKey="name" tick={{ fill: "#1B2233", fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${v}M`, "Volume"]} />
+              <Bar dataKey="value" radius={[0,4,4,0]}>
+                {volTipologia.map((e,i) => <Cell key={i} fill={e.color} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      {/* Row 2: Aquisição (donut) + Volume por responsável (grouped bars) */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <ChartCard
+          title="Forma de Aquisição"
+          subtitle="R$ Milhões — Dinheiro, Cotas ou Misto">
+          <div className="flex items-center gap-4" style={{ height: 260 }}>
+            <div style={{ width: "55%", height: "100%" }}>
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={aquisicao} dataKey="value" nameKey="name" innerRadius={62} outerRadius={100} paddingAngle={2} stroke="#FFFFFF" strokeWidth={2}>
+                    {aquisicao.map((e,i) => <Cell key={i} fill={e.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, n) => [`R$ ${v}M`, n]} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex-1 flex flex-col gap-3">
+              {aquisicao.map(p => {
+                const pct = aquisicaoTotal > 0 ? Math.round(p.value/aquisicaoTotal*100) : 0;
+                return (
+                  <div key={p.name} className="flex items-center gap-3 text-[12px]">
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: p.color }} />
+                    <span style={{ color: "var(--text)" }} className="flex-1">{p.name}</span>
+                    <span className="mono" style={{ color: "var(--text-2)" }}>R$ {p.value}M</span>
+                    <span className="mono" style={{ color: p.color, width: 38, textAlign: "right", fontWeight: 600 }}>{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </ChartCard>
+
+        <ChartCard
+          title="Volume por Responsável"
+          subtitle="R$ Milhões — Analisado vs Fechado"
+          legend={<><LegendDot color={PALETTE.blue1} label="Analisado" /><LegendDot color={PALETTE.navy} label="Fechado" /></>}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={volResp} margin={{ top: 14, right: 12, bottom: 4, left: -10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" vertical={false} />
+              <XAxis dataKey="name" tick={{ fill: "#1B2233", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} />
+              <YAxis tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}M`} />
+              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v, n) => [`R$ ${v}M`, n === "analisado" ? "Analisado" : "Fechado"]} />
+              <Bar dataKey="analisado" name="Analisado" fill={PALETTE.blue1} radius={[4,4,0,0]} />
+              <Bar dataKey="fechado"   name="Fechado"   fill={PALETTE.navy}  radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      {/* Row 3: Brokers */}
+      <div className="grid grid-cols-1 gap-4">
+        <ChartCard
+          title="Deals Originados por Broker"
+          subtitle="R$ Milhões trazidos por cada broker">
+          {brokerData.length === 0 ? (
+            <div className="flex items-center justify-center text-[12px]" style={{ height: 200, color: "var(--text-2)" }}>
+              Nenhum deal originado via broker no momento.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(220, 60 + brokerData.length * 38)}>
+              <BarChart data={brokerData} layout="vertical" margin={{ top: 8, right: 64, bottom: 4, left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" horizontal={false} />
+                <XAxis type="number" tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} tickFormatter={(v) => `${v}M`} />
+                <YAxis type="category" dataKey="name" tick={{ fill: "#1B2233", fontSize: 12 }} axisLine={false} tickLine={false} width={150} />
+                <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${v}M`, "Volume"]} />
+                <Bar dataKey="value" fill={PALETTE.blue3} radius={[0,4,4,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, legend, children }) {
+  return (
+    <div className="rounded-lg p-5" style={{ background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(20,30,60,0.03)" }}>
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="text-[14px]" style={{ fontWeight: 600, color: "var(--text)" }}>{title}</div>
+          {subtitle && <div className="text-[11px] mt-0.5" style={{ color: "var(--text-2)" }}>{subtitle}</div>}
+        </div>
+        {legend && <div className="flex items-center gap-3">{legend}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function LegendDot({ color, label }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-2)" }}>
+      <span className="w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+      {label}
+    </div>
+  );
+}
+
+// ---------- DEALS PAGE ----------
+function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
+  const [q, setQ] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fResp, setFResp] = useState("");
+  const [fPerfil, setFPerfil] = useState("");
+
+  const filtered = useMemo(() => {
+    return deals.filter(d => {
+      if (q) {
+        const s = q.toLowerCase();
+        if (!(d.produto.toLowerCase().includes(s) || (d.endereco||"").toLowerCase().includes(s))) return false;
+      }
+      if (fStatus && d.status !== fStatus) return false;
+      if (fResp && d.responsavel !== fResp) return false;
+      if (fPerfil && d.perfil_ativo !== fPerfil) return false;
+      return true;
+    });
+  }, [deals, q, fStatus, fResp, fPerfil]);
+
+  return (
+    <div className="px-8 py-7">
+      <div className="flex items-baseline justify-between mb-5">
+        <div>
+          <h1 className="text-[20px]" style={{ fontWeight: 600 }}>Deals</h1>
+          <div className="text-[13px] mt-1" style={{ color: "var(--text-2)" }}>
+            {filtered.length} de {deals.length} deals · clique em uma linha para detalhar
+          </div>
+        </div>
+        <button
+          onClick={() => openModal(null)}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded text-[12px] font-medium"
+          style={{ background: "#3B5279", color: "#FFFFFF" }}>
+          <IconPlus size={14} /> Novo Deal
+        </button>
+      </div>
+
+      {/* toolbar */}
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="relative flex-1 max-w-[360px]">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-2)" }}><IconSearch size={14}/></span>
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            className="gp-input"
+            style={{ paddingLeft: 30 }}
+            placeholder="Buscar por produto ou endereço…"
+          />
+        </div>
+        <select className="gp-select" style={{ width: 170 }} value={fStatus} onChange={e => setFStatus(e.target.value)}>
+          <option value="">Status — Todos</option>
+          {STATUS_ORDER.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select className="gp-select" style={{ width: 150 }} value={fResp} onChange={e => setFResp(e.target.value)}>
+          <option value="">Responsável — Todos</option>
+          {RESP_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select className="gp-select" style={{ width: 150 }} value={fPerfil} onChange={e => setFPerfil(e.target.value)}>
+          <option value="">Perfil — Todos</option>
+          {PERFIL_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {(q || fStatus || fResp || fPerfil) && (
+          <button
+            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); }}
+            className="text-[11px] px-2 py-1.5 rounded" style={{ color: "var(--text-2)" }}>
+            Limpar
+          </button>
+        )}
+      </div>
+
+      {/* table */}
+      <div className="rounded-lg overflow-hidden" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr style={{ color: "var(--text-2)", borderBottom: "1px solid var(--border)" }}>
+              <th className="text-left font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]">Produto</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Status</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Resp.</th>
+              <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Preço Pedido</th>
+              <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Yield</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Próximos Passos</th>
+              <th className="text-right font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]">Atualizado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-[12px]" style={{ color: "var(--text-2)" }}>
+                Nenhum deal encontrado com os filtros aplicados.
+              </td></tr>
+            )}
+            {filtered.map(d => (
+              <tr key={d.id}
+                  onClick={() => openDrawer(d.id)}
+                  className={`row-hover cursor-pointer ${selectedId === d.id ? "row-selected" : ""}`}
+                  style={{ borderTop: "1px solid var(--border)" }}>
+                <td className="px-4 py-3" style={{ fontWeight: 500, color: "var(--text)" }}>{d.produto}</td>
+                <td className="px-3 py-3"><StatusBadge status={d.status} /></td>
+                <td className="px-3 py-3"><RespBadge r={d.responsavel} /></td>
+                <td className="px-3 py-3 text-right mono" style={{ color: "var(--text)" }}>{fmtMillions(d.preco_pedido)}</td>
+                <td className="px-3 py-3 text-right mono" style={{ color: "var(--text)" }}>{fmtPct(d.yield_ultima_proposta)}</td>
+                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}>
+                  <div className="truncate max-w-[280px]">{d.proximos_passos || "—"}</div>
+                </td>
+                <td className="px-4 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)" }}>{relTime(d.updated_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------- DRAWER ----------
+function StatusEditor({ status, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <StatusBadge status={status} onClick={() => setOpen(o => !o)} hint="Clique para alterar status" />
+      {open && (
+        <div className="absolute mt-1 z-50 status-pop rounded-md p-1 min-w-[200px]">
+          {STATUS_ORDER.map(s => (
+            <div
+              key={s}
+              onClick={() => { onChange(s); setOpen(false); }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded text-[12px] cursor-pointer hover:bg-[var(--surface-2)]"
+              style={{ color: STATUS[s] }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS[s] }} />
+              <span style={{ color: s === status ? STATUS[s] : "var(--text)" }}>{s}</span>
+              {s === status && <span className="ml-auto text-[10px]" style={{ color: STATUS[s] }}>●</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-[0.08em] mb-1" style={{ color: "var(--text-2)" }}>{label}</div>
+      <div className="text-[13px]" style={{ color: "var(--text)" }}>{children}</div>
+    </div>
+  );
+}
+
+function Drawer({ deal, onClose, onChange, onEdit }) {
+  const [tab, setTab] = useState("ident");
+  if (!deal) return null;
+
+  const updateField = (key, val) => onChange({ ...deal, [key]: val, updated_at: new Date().toISOString() });
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.35)" }} onClick={onClose} />
+      <aside
+        className="fixed right-0 top-0 z-50 h-screen flex flex-col drawer-enter-active scrollbar"
+        style={{ width: 360, background: "var(--surface)", borderLeft: "1px solid var(--border)", overflowY: "auto" }}>
+        {/* header */}
+        <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.1em]" style={{ color: "var(--text-2)" }}>{deal.perfil_ativo}</div>
+              <div className="text-[16px] mt-0.5 leading-tight" style={{ fontWeight: 600 }}>{deal.produto}</div>
+            </div>
+            <button onClick={onClose} className="p-1 rounded hover:bg-[var(--surface-2)]" style={{ color: "var(--text-2)" }}><IconClose size={16}/></button>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <StatusEditor status={deal.status} onChange={(s) => updateField("status", s)} />
+            <RespBadge r={deal.responsavel} />
+            <span className="text-[11px] mono ml-auto" style={{ color: "var(--text-2)" }}>{relTime(deal.updated_at)}</span>
+          </div>
+        </div>
+
+        {/* tabs */}
+        <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
+          {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["hist","Histórico"]].map(([k,l]) => (
+            <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}>{l}</div>
+          ))}
+        </div>
+
+        <div className="px-5 py-5 flex flex-col gap-4 flex-1">
+          {tab === "ident" && (
+            <>
+              <Field label="Perfil do Ativo">{deal.perfil_ativo || "—"}</Field>
+              <Field label="Endereço">{deal.endereco || "—"}</Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Área Locável"><span className="mono">{fmtArea(deal.area_locavel)}</span></Field>
+                <Field label="Ocupação"><span className="mono">{fmtPctInt(deal.ocupacao)}</span></Field>
+              </div>
+              <Field label="Principais Locatários">{deal.principais_locatarios || "—"}</Field>
+            </>
+          )}
+
+          {tab === "fin" && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Aluguel Mensal"><span className="mono">{fmtBRL(deal.aluguel_mensal)}</span></Field>
+                <Field label="Yield Última Proposta">
+                  <span className="mono" style={{ color: deal.yield_ultima_proposta && deal.yield_ultima_proposta < 0.09 ? "#D9534F" : deal.yield_ultima_proposta && deal.yield_ultima_proposta >= 0.105 ? "#1F9D55" : "var(--text)" }}>
+                    {fmtPct(deal.yield_ultima_proposta)}
+                  </span>
+                </Field>
+              </div>
+              <Field label="Preço Pedido"><span className="mono" style={{ fontSize: 16 }}>{fmtBRL(deal.preco_pedido)}</span></Field>
+              <Field label="Último Valor"><span className="mono" style={{ fontSize: 16 }}>{fmtBRL(deal.ultimo_valor)}</span></Field>
+              {deal.preco_pedido && deal.ultimo_valor && (
+                <div className="text-[11px] p-3 rounded" style={{ background: "rgba(59,82,121,0.06)", border: "1px solid #D6DCE6", color: "var(--text-2)" }}>
+                  Diferença pedido vs. último: <span className="mono" style={{ color: "#3B5279", fontWeight: 600 }}>
+                    {fmtPct((deal.ultimo_valor - deal.preco_pedido) / deal.preco_pedido)}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "contra" && (
+            <>
+              <Field label="Perfil Vendedor">{deal.perfil_vendedor || "—"}</Field>
+              <div className="flex items-center justify-between" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                <span className="text-[12px]">Broker envolvido</span>
+                <div className={`gp-toggle ${deal.broker_envolvido ? "on" : ""}`} onClick={() => updateField("broker_envolvido", !deal.broker_envolvido)}>
+                  <span className="dot"></span>
+                </div>
+              </div>
+              {deal.broker_envolvido && <Field label="Nome do Broker">{deal.nome_broker || "—"}</Field>}
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Estratégia">{deal.estrategia || "—"}</Field>
+                <Field label="Veículo da Oferta">{deal.veiculo_oferta || "—"}</Field>
+              </div>
+            </>
+          )}
+
+          {tab === "hist" && (
+            <>
+              <div>
+                <div className="gp-label">Próximos Passos</div>
+                <textarea
+                  className="gp-textarea scrollbar"
+                  rows={4}
+                  value={deal.proximos_passos || ""}
+                  onChange={e => updateField("proximos_passos", e.target.value)}
+                  placeholder="Descreva os próximos passos…"
+                />
+              </div>
+              <div>
+                <div className="gp-label">Histórico de Negociações</div>
+                <textarea
+                  className="gp-textarea scrollbar"
+                  rows={6}
+                  value={deal.historico_negociacoes || ""}
+                  onChange={e => updateField("historico_negociacoes", e.target.value)}
+                  placeholder="Registre o histórico das negociações…"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-5 py-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border)" }}>
+          <button onClick={() => onEdit(deal)} className="flex items-center gap-1.5 px-3 py-2 rounded text-[12px] font-medium"
+            style={{ background: "#3B5279", color: "#FFFFFF" }}>
+            <IconEdit size={13}/> Editar Deal
+          </button>
+          <button onClick={onClose} className="px-3 py-2 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Fechar</button>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+// ---------- MODAL ----------
+function FormRow({ label, children, required, suffix, prefix }) {
+  return (
+    <div>
+      <label className="gp-label">{label}{required && <span style={{ color: "#3B5279" }}> *</span>}</label>
+      <div className="relative">
+        {prefix && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] mono" style={{ color: "var(--text-2)" }}>{prefix}</span>}
+        {children}
+        {suffix && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] mono" style={{ color: "var(--text-2)" }}>{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function DealModal({ initial, onClose, onSave }) {
+  const isEdit = !!initial;
+  const [form, setForm] = useState(initial || {
+    produto: "", perfil_ativo: "", endereco: "", area_locavel: "", ocupacao: "",
+    principais_locatarios: "",
+    aluguel_mensal: "", preco_pedido: "", ultimo_valor: "", yield_ultima_proposta: "",
+    perfil_vendedor: "", broker_envolvido: false, nome_broker: "",
+    estrategia: "", veiculo_oferta: "",
+    status: "DESCRIÇÃO RECEBIDA", responsavel: "CM",
+    proximos_passos: "", historico_negociacoes: "",
+  });
+  const [tab, setTab] = useState("ident");
+  const [error, setError] = useState("");
+
+  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const numOrNull = (v) => v === "" || v == null ? null : Number(v);
+
+  const submit = () => {
+    if (!form.produto || !form.produto.trim()) {
+      setError("O campo Produto é obrigatório.");
+      setTab("ident");
+      return;
+    }
+    const payload = {
+      ...form,
+      area_locavel: numOrNull(form.area_locavel),
+      ocupacao: form.ocupacao === "" || form.ocupacao == null ? null : Number(form.ocupacao) / 100,
+      aluguel_mensal: numOrNull(form.aluguel_mensal),
+      preco_pedido: numOrNull(form.preco_pedido),
+      ultimo_valor: numOrNull(form.ultimo_valor),
+      yield_ultima_proposta: form.yield_ultima_proposta === "" || form.yield_ultima_proposta == null ? null : Number(form.yield_ultima_proposta) / 100,
+      updated_at: new Date().toISOString(),
+    };
+    onSave(payload);
+  };
+
+  // for editing, convert stored decimals to display percentages
+  const ocupacaoDisplay = isEdit && typeof initial.ocupacao === "number" ? Math.round(initial.ocupacao * 100) : form.ocupacao;
+  const yieldDisplay = isEdit && typeof initial.yield_ultima_proposta === "number" ? (initial.yield_ultima_proposta * 100).toFixed(1) : form.yield_ultima_proposta;
+
+  // initialize converted values once
+  useEffect(() => {
+    if (isEdit) {
+      setForm(f => ({
+        ...f,
+        ocupacao: typeof initial.ocupacao === "number" ? Math.round(initial.ocupacao * 100) : "",
+        yield_ultima_proposta: typeof initial.yield_ultima_proposta === "number" ? +(initial.yield_ultima_proposta * 100).toFixed(1) : "",
+      }));
+    }
+    // eslint-disable-next-line
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center modal-overlay" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div
+        className="modal-card rounded-lg flex flex-col"
+        style={{ width: 640, maxHeight: "88vh", background: "var(--surface)", border: "1px solid var(--border)" }}
+        onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-5 pb-4 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.1em]" style={{ color: "#3B5279", fontWeight: 600 }}>{isEdit ? "Edição" : "Cadastro"}</div>
+            <div className="text-[16px] mt-0.5" style={{ fontWeight: 600 }}>
+              {isEdit ? `Editar Deal — ${initial.produto}` : "Novo Deal"}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-[var(--surface-2)]" style={{ color: "var(--text-2)" }}><IconClose size={16}/></button>
+        </div>
+
+        <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
+          {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["acom","Acompanhamento"]].map(([k,l]) => (
+            <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}>{l}</div>
+          ))}
+        </div>
+
+        <div className="px-6 py-5 overflow-y-auto scrollbar" style={{ flex: 1 }}>
+          {tab === "ident" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <FormRow label="Produto" required>
+                  <input className="gp-input" value={form.produto} onChange={e => { upd("produto", e.target.value); setError(""); }} placeholder="Ex.: Galpão Cajamar — Bloco A" />
+                </FormRow>
+              </div>
+              <FormRow label="Perfil do Ativo">
+                <select className="gp-select" value={form.perfil_ativo} onChange={e => upd("perfil_ativo", e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {PERFIL_OPTS.map(p => <option key={p}>{p}</option>)}
+                </select>
+              </FormRow>
+              <FormRow label="Endereço">
+                <input className="gp-input" value={form.endereco} onChange={e => upd("endereco", e.target.value)} placeholder="Rua, número — cidade, UF" />
+              </FormRow>
+              <FormRow label="Área Locável" suffix="m²">
+                <input className="gp-input mono" type="number" value={form.area_locavel ?? ""} onChange={e => upd("area_locavel", e.target.value)} placeholder="0" style={{ paddingRight: 32 }}/>
+              </FormRow>
+              <FormRow label="Ocupação" suffix="%">
+                <input className="gp-input mono" type="number" min="0" max="100" value={form.ocupacao ?? ""} onChange={e => upd("ocupacao", e.target.value)} placeholder="0" style={{ paddingRight: 32 }}/>
+              </FormRow>
+              <div className="col-span-2">
+                <FormRow label="Principais Locatários">
+                  <input className="gp-input" value={form.principais_locatarios} onChange={e => upd("principais_locatarios", e.target.value)} placeholder="Ex.: Amazon, Mercado Livre" />
+                </FormRow>
+              </div>
+            </div>
+          )}
+
+          {tab === "fin" && (
+            <div className="grid grid-cols-2 gap-4">
+              <FormRow label="Aluguel Mensal" prefix="R$">
+                <input className="gp-input mono" type="number" value={form.aluguel_mensal ?? ""} onChange={e => upd("aluguel_mensal", e.target.value)} placeholder="0" style={{ paddingLeft: 38 }}/>
+              </FormRow>
+              <FormRow label="Yield Última Proposta" suffix="%">
+                <input className="gp-input mono" type="number" step="0.1" value={form.yield_ultima_proposta ?? ""} onChange={e => upd("yield_ultima_proposta", e.target.value)} placeholder="0,0" style={{ paddingRight: 32 }}/>
+              </FormRow>
+              <FormRow label="Preço Pedido" prefix="R$">
+                <input className="gp-input mono" type="number" value={form.preco_pedido ?? ""} onChange={e => upd("preco_pedido", e.target.value)} placeholder="0" style={{ paddingLeft: 38 }}/>
+              </FormRow>
+              <FormRow label="Último Valor" prefix="R$">
+                <input className="gp-input mono" type="number" value={form.ultimo_valor ?? ""} onChange={e => upd("ultimo_valor", e.target.value)} placeholder="0" style={{ paddingLeft: 38 }}/>
+              </FormRow>
+            </div>
+          )}
+
+          {tab === "contra" && (
+            <div className="grid grid-cols-2 gap-4">
+              <FormRow label="Perfil do Vendedor">
+                <select className="gp-select" value={form.perfil_vendedor} onChange={e => upd("perfil_vendedor", e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {VENDEDOR_OPTS.map(p => <option key={p}>{p}</option>)}
+                </select>
+              </FormRow>
+              <div className="flex items-end">
+                <div className="flex-1">
+                  <div className="gp-label">Broker Envolvido</div>
+                  <div className="flex items-center gap-3 h-[36px]">
+                    <div className={`gp-toggle ${form.broker_envolvido ? "on" : ""}`} onClick={() => upd("broker_envolvido", !form.broker_envolvido)}>
+                      <span className="dot"></span>
+                    </div>
+                    <span className="text-[12px]" style={{ color: "var(--text-2)" }}>{form.broker_envolvido ? "Sim" : "Não"}</span>
+                  </div>
+                </div>
+              </div>
+              {form.broker_envolvido && (
+                <div className="col-span-2">
+                  <FormRow label="Nome do Broker">
+                    <input className="gp-input" value={form.nome_broker || ""} onChange={e => upd("nome_broker", e.target.value)} placeholder="Ex.: JLL, CBRE, Cushman" />
+                  </FormRow>
+                </div>
+              )}
+              <FormRow label="Estratégia">
+                <select className="gp-select" value={form.estrategia} onChange={e => upd("estrategia", e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {ESTRATEGIA_OPTS.map(p => <option key={p}>{p}</option>)}
+                </select>
+              </FormRow>
+              <FormRow label="Veículo da Oferta">
+                <select className="gp-select" value={form.veiculo_oferta} onChange={e => upd("veiculo_oferta", e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {VEICULO_OPTS.map(p => <option key={p}>{p}</option>)}
+                </select>
+              </FormRow>
+            </div>
+          )}
+
+          {tab === "acom" && (
+            <div className="grid grid-cols-2 gap-4">
+              <FormRow label="Status">
+                <select className="gp-select" value={form.status} onChange={e => upd("status", e.target.value)}>
+                  {STATUS_ORDER.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </FormRow>
+              <FormRow label="Responsável">
+                <select className="gp-select" value={form.responsavel} onChange={e => upd("responsavel", e.target.value)}>
+                  {RESP_OPTS.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </FormRow>
+              <div className="col-span-2">
+                <FormRow label="Próximos Passos">
+                  <textarea className="gp-textarea scrollbar" rows={3} value={form.proximos_passos} onChange={e => upd("proximos_passos", e.target.value)} placeholder="Quais os próximos passos para esse deal?" />
+                </FormRow>
+              </div>
+              <div className="col-span-2">
+                <FormRow label="Histórico de Negociações">
+                  <textarea className="gp-textarea scrollbar" rows={4} value={form.historico_negociacoes} onChange={e => upd("historico_negociacoes", e.target.value)} placeholder="Registre os marcos da negociação…" />
+                </FormRow>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 flex items-center justify-between" style={{ borderTop: "1px solid var(--border)" }}>
+          <div className="text-[11px]" style={{ color: error ? "#D9534F" : "var(--text-2)" }}>
+            {error || "Apenas o campo Produto é obrigatório."}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-3 py-2 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
+            <button onClick={submit} className="px-4 py-2 rounded text-[12px] font-medium" style={{ background: "#3B5279", color: "#FFFFFF" }}>
+              Salvar Deal
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- APP ----------
+function App() {
+  const [view, setView] = useState("dashboard");
+  const [deals, setDeals] = useState(SEED_DEALS);
+  const [drawerId, setDrawerId] = useState(null);
+  const [modal, setModal] = useState(null); // null | {mode: 'new'} | {mode:'edit', deal}
+
+  const drawerDeal = deals.find(d => d.id === drawerId) || null;
+
+  const openDrawer = (id) => setDrawerId(id);
+  const closeDrawer = () => setDrawerId(null);
+
+  const openModal = (deal) => setModal(deal ? { mode: "edit", deal } : { mode: "new" });
+
+  const handleDealChange = (updated) => {
+    setDeals(ds => ds.map(d => d.id === updated.id ? updated : d));
+  };
+
+  const handleSave = (payload) => {
+    if (modal.mode === "edit") {
+      setDeals(ds => ds.map(d => d.id === payload.id ? { ...d, ...payload } : d));
+      setDrawerId(payload.id);
+    } else {
+      const id = `d-${Date.now()}`;
+      setDeals(ds => [{ id, ...payload }, ...ds]);
+      setDrawerId(id);
+    }
+    setModal(null);
+  };
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar view={view} setView={setView} />
+      <main className="flex-1 min-w-0">
+        {view === "dashboard" && <DashboardPage deals={deals} />}
+        {view === "deals" && (
+          <DealsPage
+            deals={deals}
+            setDeals={setDeals}
+            openDrawer={openDrawer}
+            selectedId={drawerId}
+            openModal={openModal}
+          />
+        )}
+      </main>
+
+      {drawerDeal && view === "deals" && (
+        <Drawer
+          deal={drawerDeal}
+          onClose={closeDrawer}
+          onChange={handleDealChange}
+          onEdit={(d) => openModal(d)}
+        />
+      )}
+
+      {modal && (
+        <DealModal
+          initial={modal.mode === "edit" ? modal.deal : null}
+          onClose={() => setModal(null)}
+          onSave={handleSave}
+        />
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

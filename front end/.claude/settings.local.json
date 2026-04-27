@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(gunzip)",
+      "Bash(tar -xf /tmp/design_bundle.tar -C /tmp/)",
+      "Read(//tmp/**)",
+      "Bash(cp \"/tmp/dashboard-deals/project/Guardian Pipeline.html\" /tmp/gp.html)",
+      "Bash(sed -n '1,400p' /tmp/gp.html)"
+    ]
+  }
+}
