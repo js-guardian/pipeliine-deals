@@ -148,23 +148,17 @@ const PALETTE = {
 };
 
 const STATUS = {
-  "DESCRIÇÃO RECEBIDA": "#8592AA",
-  "EM ANÁLISE":         "#6FA0CD",
-  "REUNIÃO REALIZADA":  "#2E75B6",
-  "PROPOSTA ENVIADA":   "#2FC9FF",
-  "EM NEGOCIAÇÃO":      "#4E95D9",
-  "FECHADO":            "#3B5279",
-  "DESCARTADO":         "#AFABAB",
+  "CONDIÇÕES COMERCIAIS FECHADAS":     "#3B5279",
+  "NEGOCIAÇÕES EM ANDAMENTO":      "#4E95D9",
+  "OPORTUNIDADES RECEBIDAS": "#8592AA",
+  "OPORTUNIDADES DESCARTADAS":         "#AFABAB",
 };
 const STATUS_ORDER = Object.keys(STATUS);
 const STATUS_SHORT = {
-  "DESCRIÇÃO RECEBIDA": "DESC.",
-  "EM ANÁLISE": "ANÁLISE",
-  "REUNIÃO REALIZADA": "REUNIÃO",
-  "PROPOSTA ENVIADA": "PROPOSTA",
-  "EM NEGOCIAÇÃO": "NEGOC.",
-  "FECHADO": "FECHADO",
-  "DESCARTADO": "DESCART.",
+  "CONDIÇÕES COMERCIAIS FECHADAS": "FECHADO",
+  "NEGOCIAÇÕES EM ANDAMENTO": "NEGOC.",
+  "OPORTUNIDADES RECEBIDAS": "OPORT.",
+  "OPORTUNIDADES DESCARTADAS": "DESCART.",
 };
 
 const PERFIL_COLORS = {
@@ -182,122 +176,14 @@ const VEICULO_OPTS = ["GARE","CETIPADO","DIRETO"];
 const VENDEDOR_OPTS = ["FUNDO","BROKER","CONSULTORIA","PROPRIETÁRIO DIRETO","OUTRO"];
 const RESP_OPTS = ["JS","CM","GVM"];
 
-const SEED_DEALS = [
-  { produto: "Galpão Cajamar — Bloco A", status: "EM NEGOCIAÇÃO",
-    responsavel: "CM", perfil_ativo: "LOGÍSTICA",
-    endereco: "Av. Marginal, 1200 — Cajamar, SP",
-    aluguel_mensal: 420000, preco_pedido: 48000000,
-    ultimo_valor: 45000000, yield_ultima_proposta: 0.105,
-    area_locavel: 42800, ocupacao: 1.0,
-    estrategia: "COTAS", veiculo_oferta: "GARE",
-    perfil_vendedor: "FUNDO", broker_envolvido: false,
-    nome_broker: "",
-    principais_locatarios: "AMAZON, SHOPEE",
-    proximos_passos: "Aguardando laudo de avaliação do ativo.",
-    historico_negociacoes: "Contato inicial em março. Visita realizada.",
-    updated_at: "2026-04-27T10:00:00" },
-  { produto: "Torre Office Faria Lima", status: "PROPOSTA ENVIADA",
-    responsavel: "JS", perfil_ativo: "OFFICE",
-    endereco: "Av. Brig. Faria Lima, 3500 — São Paulo, SP",
-    aluguel_mensal: 920000, preco_pedido: 120000000,
-    ultimo_valor: 115000000, yield_ultima_proposta: 0.092,
-    area_locavel: 18500, ocupacao: 0.94,
-    estrategia: "CASH", veiculo_oferta: "DIRETO",
-    perfil_vendedor: "PROPRIETÁRIO DIRETO", broker_envolvido: true,
-    nome_broker: "JLL Brasil",
-    principais_locatarios: "ITAÚ, AMBEV",
-    proximos_passos: "Reunião de alinhamento na quinta-feira.",
-    historico_negociacoes: "Proposta enviada em 15/04. Aguardando retorno.",
-    updated_at: "2026-04-26T16:30:00" },
-  { produto: "CD Guarulhos — Amazon", status: "EM ANÁLISE",
-    responsavel: "GVM", perfil_ativo: "LOGÍSTICA",
-    endereco: "Rod. Presidente Dutra, km 228 — Guarulhos, SP",
-    aluguel_mensal: 780000, preco_pedido: 85000000,
-    ultimo_valor: 82000000, yield_ultima_proposta: 0.110,
-    area_locavel: 68000, ocupacao: 1.0,
-    estrategia: "COTAS", veiculo_oferta: "GARE",
-    perfil_vendedor: "FUNDO", broker_envolvido: true,
-    nome_broker: "CBRE",
-    principais_locatarios: "AMAZON",
-    proximos_passos: "Due diligence em andamento. Prazo: 10/05.",
-    historico_negociacoes: "Recebido via CBRE em 01/04. Análise iniciada.",
-    updated_at: "2026-04-24T09:15:00" },
-  { produto: "Loja Shopee Osasco", status: "DESCRIÇÃO RECEBIDA",
-    responsavel: "CM", perfil_ativo: "RETAIL",
-    endereco: "Av. dos Autonomistas, 1500 — Osasco, SP",
-    aluguel_mensal: null, preco_pedido: null,
-    ultimo_valor: null, yield_ultima_proposta: null,
-    area_locavel: 4200, ocupacao: 1.0,
-    estrategia: "", veiculo_oferta: "",
-    perfil_vendedor: "BROKER", broker_envolvido: true,
-    nome_broker: "Cushman & Wakefield",
-    principais_locatarios: "SHOPEE",
-    proximos_passos: "Triagem inicial — verificar fit com mandato.",
-    historico_negociacoes: "Recebido por email em 25/04.",
-    updated_at: "2026-04-25T14:00:00" },
-  { produto: "Industrial Santo André", status: "DESCARTADO",
-    responsavel: "JS", perfil_ativo: "INDUSTRIAL",
-    endereco: "Rua das Indústrias, 800 — Santo André, SP",
-    aluguel_mensal: 148000, preco_pedido: 22000000,
-    ultimo_valor: 20000000, yield_ultima_proposta: 0.081,
-    area_locavel: 12400, ocupacao: 0.75,
-    estrategia: "CASH", veiculo_oferta: "DIRETO",
-    perfil_vendedor: "PROPRIETÁRIO DIRETO", broker_envolvido: false,
-    nome_broker: "",
-    principais_locatarios: "METALÚRGICA ABC",
-    proximos_passos: "Descartado — yield abaixo do mínimo aceitável.",
-    historico_negociacoes: "Analisado em março. Yield de 8,1% abaixo do floor.",
-    updated_at: "2026-04-20T11:00:00" },
-  { produto: "Parque Logístico Jundiaí", status: "REUNIÃO REALIZADA",
-    responsavel: "GVM", perfil_ativo: "LOGÍSTICA",
-    endereco: "Rod. Anhanguera, km 62 — Jundiaí, SP",
-    aluguel_mensal: 610000, preco_pedido: 67000000,
-    ultimo_valor: 65000000, yield_ultima_proposta: 0.109,
-    area_locavel: 54000, ocupacao: 0.88,
-    estrategia: "COTAS", veiculo_oferta: "GARE",
-    perfil_vendedor: "FUNDO", broker_envolvido: false,
-    nome_broker: "",
-    principais_locatarios: "MERCADO LIVRE, DHL",
-    proximos_passos: "Elaborar proposta formal até 30/04.",
-    historico_negociacoes: "Reunião com gestora realizada em 22/04.",
-    updated_at: "2026-04-22T15:45:00" },
-  { produto: "Edifício Paulista 1000", status: "EM NEGOCIAÇÃO",
-    responsavel: "JS", perfil_ativo: "OFFICE",
-    endereco: "Av. Paulista, 1000 — São Paulo, SP",
-    aluguel_mensal: 540000, preco_pedido: 72000000,
-    ultimo_valor: 68000000, yield_ultima_proposta: 0.090,
-    area_locavel: 9800, ocupacao: 0.91,
-    estrategia: "CETIPADO", veiculo_oferta: "CETIPADO",
-    perfil_vendedor: "CONSULTORIA", broker_envolvido: true,
-    nome_broker: "Savills",
-    principais_locatarios: "BRADESCO, TOTVS",
-    proximos_passos: "Negociando deságio de 5% sobre último valor.",
-    historico_negociacoes: "Oferta feita em 10/04. Contraproposta recebida.",
-    updated_at: "2026-04-27T08:30:00" },
-  { produto: "Centro Distribuição Campinas", status: "FECHADO",
-    responsavel: "CM", perfil_ativo: "LOGÍSTICA",
-    endereco: "Rod. Dom Pedro I, km 140 — Campinas, SP",
-    aluguel_mensal: 890000, preco_pedido: 98000000,
-    ultimo_valor: 96000000, yield_ultima_proposta: 0.112,
-    area_locavel: 76000, ocupacao: 1.0,
-    estrategia: "COTAS", veiculo_oferta: "GARE",
-    perfil_vendedor: "FUNDO", broker_envolvido: false,
-    nome_broker: "",
-    principais_locatarios: "MAGAZINE LUIZA, VIA",
-    proximos_passos: "Deal fechado — aguardando assinatura do contrato.",
-    historico_negociacoes: "Fechado em 18/04 após 6 semanas de negociação.",
-    updated_at: "2026-04-18T17:00:00" },
-].map((d, i) => ({ id: `d-${i+1}`, ...d }));
-
-const TODAY = new Date("2026-04-27T18:00:00");
+const TODAY = new Date();
 
 // ---------- FORMATTERS ----------
 const fmtBRL = (n) => n == null ? "—" : "R$ " + Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 const fmtMillions = (n) => {
   if (n == null) return "—";
   const m = n / 1_000_000;
-  if (m >= 100) return `R$ ${Math.round(m)}M`;
-  return `R$ ${m.toFixed(m >= 10 ? 0 : 1).replace(".", ",")}M`;
+  return "R$ " + m.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "M";
 };
 const fmtPct = (n, decimals=1) => n == null ? "—" : (n*100).toFixed(decimals).replace(".", ",") + "%";
 const fmtPctInt = (n) => n == null ? "—" : Math.round(n*100) + "%";
@@ -426,26 +312,25 @@ function KpiCard({ label, value, color, sub, delta }) {
 }
 
 function DashboardPage({ deals }) {
-  const total = deals.length;
-  const negoc = deals.filter(d => d.status === "EM NEGOCIAÇÃO").length;
-  const volumeNegoc = deals.filter(d => d.status === "EM NEGOCIAÇÃO").reduce((s,d) => s + (d.preco_pedido || 0), 0);
-  const volume = deals.reduce((s,d) => s + (d.preco_pedido || 0), 0);
-  const fechadosMes = deals.filter(d => d.status === "FECHADO" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear()).length;
-  const volumeFechadosMes = deals
-    .filter(d => d.status === "FECHADO" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear())
-    .reduce((s,d) => s + (d.preco_pedido || 0), 0);
+  const vol = (d) => d.ultimo_valor || 0;
 
-  // 1. Distribuição de Propostas (volume financeiro R$ M)
+  const total = deals.length;
+  const volumeNegoc = deals.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO").reduce((s,d) => s + vol(d), 0);
+  const volume = deals.reduce((s,d) => s + vol(d), 0);
+  const volumeFechadosMes = deals
+    .filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear())
+    .reduce((s,d) => s + vol(d), 0);
+
+  // 1. Distribuição por status (volume financeiro R$ M)
   const propostasMap = [
-    { key: "ANÁLISE",     status: "EM ANÁLISE",       label: "Analisadas",     color: PALETTE.blueSoft },
-    { key: "ENVIADAS",   status: "PROPOSTA ENVIADA", label: "Enviadas",       color: PALETTE.cyan },
-    { key: "NEGOCIAÇÃO", status: "EM NEGOCIAÇÃO",    label: "Em Negociação",   color: PALETTE.blue1 },
-    { key: "FECHADAS",   status: "FECHADO",          label: "Fechadas",       color: PALETTE.navy },
-    { key: "DESCARTADAS",status: "DESCARTADO",       label: "Descartadas",    color: PALETTE.gray1 },
+    { status: "OPORTUNIDADES RECEBIDAS",          label: "Recebidas",    color: PALETTE.gray3 },
+    { status: "NEGOCIAÇÕES EM ANDAMENTO",          label: "Negociação",   color: PALETTE.blue1 },
+    { status: "CONDIÇÕES COMERCIAIS FECHADAS",     label: "Fechadas",     color: PALETTE.navy },
+    { status: "OPORTUNIDADES DESCARTADAS",         label: "Descartadas",  color: PALETTE.gray1 },
   ];
   const propostas = propostasMap.map(m => ({
     name: m.label,
-    value: +(deals.filter(d => d.status === m.status).reduce((s,d) => s + (d.preco_pedido || 0), 0) / 1_000_000).toFixed(1),
+    value: +(deals.filter(d => d.status === m.status).reduce((s,d) => s + vol(d), 0) / 1_000_000).toFixed(1),
     color: m.color
   }));
 
@@ -453,7 +338,7 @@ function DashboardPage({ deals }) {
   const tipologias = {};
   deals.forEach(d => {
     const k = d.perfil_ativo || "OUTROS";
-    tipologias[k] = (tipologias[k] || 0) + (d.preco_pedido || 0);
+    tipologias[k] = (tipologias[k] || 0) + vol(d);
   });
   const volTipologia = Object.entries(tipologias)
     .map(([k, v]) => ({ name: k, value: +(v/1_000_000).toFixed(1), color: PERFIL_COLORS[k] || PALETTE.gray3 }))
@@ -467,7 +352,7 @@ function DashboardPage({ deals }) {
     if (e === "CASH") bucket = "Dinheiro";
     else if (e === "COTAS") bucket = "Cotas";
     else if (e === "CETIPADO" || !e) bucket = "Misto";
-    aquisicaoBuckets[bucket] += (d.preco_pedido || 0);
+    aquisicaoBuckets[bucket] += vol(d);
   });
   const aquisicao = [
     { name: "Dinheiro", value: +(aquisicaoBuckets["Dinheiro"]/1_000_000).toFixed(1), color: PALETTE.navy },
@@ -481,9 +366,9 @@ function DashboardPage({ deals }) {
   RESP_OPTS.forEach(r => respMap[r] = { name: r, analisado: 0, fechado: 0 });
   deals.forEach(d => {
     if (!respMap[d.responsavel]) return;
-    const v = (d.preco_pedido || 0) / 1_000_000;
+    const v = vol(d) / 1_000_000;
     respMap[d.responsavel].analisado += v;
-    if (d.status === "FECHADO") respMap[d.responsavel].fechado += v;
+    if (d.status === "CONDIÇÕES COMERCIAIS FECHADAS") respMap[d.responsavel].fechado += v;
   });
   const volResp = Object.values(respMap).map(o => ({
     name: o.name,
@@ -495,7 +380,7 @@ function DashboardPage({ deals }) {
   const brokers = {};
   deals.forEach(d => {
     if (!d.broker_envolvido || !d.nome_broker) return;
-    brokers[d.nome_broker] = (brokers[d.nome_broker] || 0) + (d.preco_pedido || 0);
+    brokers[d.nome_broker] = (brokers[d.nome_broker] || 0) + vol(d);
   });
   const brokerData = Object.entries(brokers)
     .map(([k, v]) => ({ name: k, value: +(v/1_000_000).toFixed(1) }))
@@ -506,7 +391,7 @@ function DashboardPage({ deals }) {
       <div className="flex items-baseline justify-between mb-1">
         <h1 className="text-[20px]" style={{ fontWeight: 600, color: "var(--text)" }}>Dashboard</h1>
         <div className="text-[12px]" style={{ color: "var(--text-2)" }}>
-          <span className="mono">27 abr 2026</span> · visão geral do pipeline
+          <span className="mono">{TODAY.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span> · visão geral do pipeline
         </div>
       </div>
       <div className="text-[13px] mb-6" style={{ color: "var(--text-2)" }}>
@@ -516,9 +401,9 @@ function DashboardPage({ deals }) {
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <KpiCard label="Total de Deals" value={total} color={PALETTE.navy} sub="ativos no pipeline" delta={12.5} />
-        <KpiCard label="Em Negociação" value={`R$ ${(volumeNegoc/1_000_000).toFixed(0)}M`} color={PALETTE.blue1} sub="volume financeiro em negociação" delta={8.3} />
-        <KpiCard label="Volume Total" value={`R$ ${(volume/1_000_000).toFixed(0)}M`} color={PALETTE.blue3} sub="soma de preços pedidos" delta={-3.2} />
-        <KpiCard label="Fechados este mês" value={`R$ ${(volumeFechadosMes/1_000_000).toFixed(0)}M`} color={PALETTE.cyan} sub="volume financeiro · abril/2026" delta={24.7} />
+        <KpiCard label="Em Negociação" value={fmtMillions(volumeNegoc)} color={PALETTE.blue1} sub="volume — negociações em andamento" delta={8.3} />
+        <KpiCard label="Volume Total" value={fmtMillions(volume)} color={PALETTE.blue3} sub="soma do último valor enviado" delta={-3.2} />
+        <KpiCard label="Fechados este mês" value={fmtMillions(volumeFechadosMes)} color={PALETTE.cyan} sub={`volume fechado · ${TODAY.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}`} delta={24.7} />
       </div>
 
       {/* Row 1: Propostas + Tipologia */}
@@ -661,19 +546,28 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
   const [fStatus, setFStatus] = useState("");
   const [fResp, setFResp] = useState("");
   const [fPerfil, setFPerfil] = useState("");
+  const [fCidade, setFCidade] = useState("");
+  const [fUF, setFUF] = useState("");
+
+  const cidadeOpts = useMemo(() => [...new Set(deals.map(d => d.cidade).filter(Boolean))].sort(), [deals]);
+  const ufOpts = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
   const filtered = useMemo(() => {
-    return deals.filter(d => {
-      if (q) {
-        const s = q.toLowerCase();
-        if (!(d.produto.toLowerCase().includes(s) || (d.endereco||"").toLowerCase().includes(s))) return false;
-      }
-      if (fStatus && d.status !== fStatus) return false;
-      if (fResp && d.responsavel !== fResp) return false;
-      if (fPerfil && d.perfil_ativo !== fPerfil) return false;
-      return true;
-    });
-  }, [deals, q, fStatus, fResp, fPerfil]);
+    return deals
+      .filter(d => {
+        if (q) {
+          const s = q.toLowerCase();
+          if (!((d.produto||"").toLowerCase().includes(s) || (d.endereco||"").toLowerCase().includes(s))) return false;
+        }
+        if (fStatus && d.status !== fStatus) return false;
+        if (fResp && d.responsavel !== fResp) return false;
+        if (fPerfil && d.perfil_ativo !== fPerfil) return false;
+        if (fCidade && d.cidade !== fCidade) return false;
+        if (fUF && d.uf !== fUF) return false;
+        return true;
+      })
+      .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+  }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF]);
 
   return (
     <div className="px-8 py-7">
@@ -716,9 +610,17 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
           <option value="">Perfil — Todos</option>
           {PERFIL_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {(q || fStatus || fResp || fPerfil) && (
+        <select className="gp-select" style={{ width: 150 }} value={fCidade} onChange={e => setFCidade(e.target.value)}>
+          <option value="">Cidade — Todas</option>
+          {cidadeOpts.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select className="gp-select" style={{ width: 100 }} value={fUF} onChange={e => setFUF(e.target.value)}>
+          <option value="">UF — Todas</option>
+          {ufOpts.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {(q || fStatus || fResp || fPerfil || fCidade || fUF) && (
           <button
-            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); }}
+            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); setFCidade(""); setFUF(""); }}
             className="text-[11px] px-2 py-1.5 rounded" style={{ color: "var(--text-2)" }}>
             Limpar
           </button>
@@ -726,22 +628,35 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
       </div>
 
       {/* table */}
-      <div className="rounded-lg overflow-hidden" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-        <table className="w-full text-[13px]">
+      <div className="rounded-lg overflow-hidden scrollbar" style={{ background: "var(--surface)", border: "1px solid var(--border)", overflowX: "auto" }}>
+        <table className="text-[13px]" style={{ minWidth: 1800 }}>
           <thead>
             <tr style={{ color: "var(--text-2)", borderBottom: "1px solid var(--border)" }}>
-              <th className="text-left font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]">Produto</th>
-              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Status</th>
+              <th className="text-left font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 180 }}>Produto</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 220 }}>Status</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Resp.</th>
-              <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Preço Pedido</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Perfil</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 180 }}>Endereço</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Cidade</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">UF</th>
+              <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">ABL (m²)</th>
+              <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Aluguel Mensal</th>
+              <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Último Valor</th>
               <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Yield</th>
-              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Próximos Passos</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Estratégia</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Veículo</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Perfil Vendedor</th>
+              <th className="text-center font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Broker</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Nome Broker</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 160 }}>Principais Locatários</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 200 }}>Próximos Passos</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 200 }}>Histórico</th>
               <th className="text-right font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]">Atualizado</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-[12px]" style={{ color: "var(--text-2)" }}>
+              <tr><td colSpan={18} className="px-4 py-12 text-center text-[12px]" style={{ color: "var(--text-2)" }}>
                 Nenhum deal encontrado com os filtros aplicados.
               </td></tr>
             )}
@@ -750,15 +665,26 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
                   onClick={() => openDrawer(d.id)}
                   className={`row-hover cursor-pointer ${selectedId === d.id ? "row-selected" : ""}`}
                   style={{ borderTop: "1px solid var(--border)" }}>
-                <td className="px-4 py-3" style={{ fontWeight: 500, color: "var(--text)" }}>{d.produto}</td>
-                <td className="px-3 py-3"><StatusBadge status={d.status} /></td>
+                <td className="px-4 py-3" style={{ fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap" }}>{d.produto}</td>
+                <td className="px-3 py-3" style={{ whiteSpace: "nowrap" }}><StatusBadge status={d.status} /></td>
                 <td className="px-3 py-3"><RespBadge r={d.responsavel} /></td>
-                <td className="px-3 py-3 text-right mono" style={{ color: "var(--text)" }}>{fmtMillions(d.preco_pedido)}</td>
+                <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.perfil_ativo || "—"}</td>
+                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 180 }}>{d.endereco || "—"}</div></td>
+                <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.cidade || "—"}</td>
+                <td className="px-3 py-3 text-[12px] mono" style={{ color: "var(--text-2)" }}>{d.uf || "—"}</td>
+                <td className="px-3 py-3 text-right mono" style={{ color: "var(--text)" }}>{d.area_locavel ? Number(d.area_locavel).toLocaleString("pt-BR") : "—"}</td>
+                <td className="px-3 py-3 text-right mono" style={{ color: "var(--text)", whiteSpace: "nowrap" }}>{fmtBRL(d.aluguel_mensal)}</td>
+                <td className="px-3 py-3 text-right mono" style={{ color: "var(--text)", whiteSpace: "nowrap" }}>{fmtMillions(d.ultimo_valor)}</td>
                 <td className="px-3 py-3 text-right mono" style={{ color: "var(--text)" }}>{fmtPct(d.yield_ultima_proposta)}</td>
-                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}>
-                  <div className="truncate max-w-[280px]">{d.proximos_passos || "—"}</div>
-                </td>
-                <td className="px-4 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)" }}>{relTime(d.updated_at)}</td>
+                <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)" }}>{d.estrategia || "—"}</td>
+                <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)" }}>{d.veiculo_oferta || "—"}</td>
+                <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.perfil_vendedor || "—"}</td>
+                <td className="px-3 py-3 text-center text-[12px]" style={{ color: "var(--text-2)" }}>{d.broker_envolvido === true ? "Sim" : d.broker_envolvido === false ? "Não" : "—"}</td>
+                <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.nome_broker || "—"}</td>
+                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 160 }}>{d.principais_locatarios || "—"}</div></td>
+                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 200 }}>{d.proximos_passos || "—"}</div></td>
+                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 200 }}>{d.historico_negociacoes || "—"}</div></td>
+                <td className="px-4 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{relTime(d.updated_at)}</td>
               </tr>
             ))}
           </tbody>
@@ -808,11 +734,15 @@ function Field({ label, children }) {
   );
 }
 
-function Drawer({ deal, onClose, onChange, onEdit }) {
+function Drawer({ deal, onClose, onChange, onEdit, onSave }) {
   const [tab, setTab] = useState("ident");
   if (!deal) return null;
 
-  const updateField = (key, val) => onChange({ ...deal, [key]: val, updated_at: new Date().toISOString() });
+  const updateField = (key, val) => {
+    const updated = { ...deal, [key]: val, updated_at: new Date().toISOString() };
+    onChange(updated);
+    if (key === "status" || key === "broker_envolvido") onSave(updated);
+  };
 
   return (
     <>
@@ -925,6 +855,10 @@ function Drawer({ deal, onClose, onChange, onEdit }) {
           <button onClick={() => onEdit(deal)} className="flex items-center gap-1.5 px-3 py-2 rounded text-[12px] font-medium"
             style={{ background: "#3B5279", color: "#FFFFFF" }}>
             <IconEdit size={13}/> Editar Deal
+          </button>
+          <button onClick={() => onSave(deal)} className="px-3 py-2 rounded text-[12px] font-medium"
+            style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
+            Salvar
           </button>
           <button onClick={onClose} className="px-3 py-2 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Fechar</button>
         </div>
@@ -1156,32 +1090,75 @@ function DealModal({ initial, onClose, onSave }) {
 // ---------- APP ----------
 function App() {
   const [view, setView] = useState("dashboard");
-  const [deals, setDeals] = useState(SEED_DEALS);
+  const [deals, setDeals] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [drawerId, setDrawerId] = useState(null);
   const [modal, setModal] = useState(null); // null | {mode: 'new'} | {mode:'edit', deal}
+
+  useEffect(() => {
+    fetch("/api/deals")
+      .then(r => r.json())
+      .then(data => { setDeals(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
 
   const drawerDeal = deals.find(d => d.id === drawerId) || null;
 
   const openDrawer = (id) => setDrawerId(id);
   const closeDrawer = () => setDrawerId(null);
-
   const openModal = (deal) => setModal(deal ? { mode: "edit", deal } : { mode: "new" });
 
   const handleDealChange = (updated) => {
     setDeals(ds => ds.map(d => d.id === updated.id ? updated : d));
   };
 
+  const handleDrawerSave = (deal) => {
+    fetch(`/api/deals/${deal.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(deal),
+    })
+      .then(r => r.json())
+      .then(saved => setDeals(ds => ds.map(d => d.id === saved.id ? saved : d)))
+      .catch(console.error);
+  };
+
   const handleSave = (payload) => {
     if (modal.mode === "edit") {
-      setDeals(ds => ds.map(d => d.id === payload.id ? { ...d, ...payload } : d));
-      setDrawerId(payload.id);
+      fetch(`/api/deals/${payload.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(r => r.json())
+        .then(saved => {
+          setDeals(ds => ds.map(d => d.id === saved.id ? saved : d));
+          setDrawerId(saved.id);
+        })
+        .catch(console.error);
     } else {
-      const id = `d-${Date.now()}`;
-      setDeals(ds => [{ id, ...payload }, ...ds]);
-      setDrawerId(id);
+      fetch("/api/deals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(r => r.json())
+        .then(saved => {
+          setDeals(ds => [saved, ...ds]);
+          setDrawerId(saved.id);
+        })
+        .catch(console.error);
     }
     setModal(null);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen" style={{ color: "var(--text-2)", fontSize: 14 }}>
+        Carregando deals…
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">
@@ -1205,6 +1182,7 @@ function App() {
           onClose={closeDrawer}
           onChange={handleDealChange}
           onEdit={(d) => openModal(d)}
+          onSave={handleDrawerSave}
         />
       )}
 
