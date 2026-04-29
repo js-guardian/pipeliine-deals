@@ -37,6 +37,7 @@ def _bool(v):
 
 
 def row_to_deal(row: dict) -> dict:
+    row = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
     updated_at = row.get("updated_at")
     return {
         "id": int(row["id"]),
