@@ -174,7 +174,7 @@ const PERFIL_OPTS = ["LOGÍSTICA","OFFICE","INDUSTRIAL","RETAIL","GALPÃO","MIST
 const ESTRATEGIA_OPTS = ["COTAS","CASH","CETIPADO"];
 const VEICULO_OPTS = ["GARE","CETIPADO","DIRETO"];
 const VENDEDOR_OPTS = ["FUNDO","BROKER","CONSULTORIA","PROPRIETÁRIO DIRETO","OUTRO"];
-const RESP_OPTS = ["JS","CM","GVM"];
+const RESP_OPTS = ["ACL","CM","GSA","GVM","JA","JS","PMK"];
 
 const TODAY = new Date();
 
@@ -970,8 +970,19 @@ function DealModal({ initial, onClose, onSave }) {
                   {PERFIL_OPTS.map(p => <option key={p}>{p}</option>)}
                 </select>
               </FormRow>
-              <FormRow label="Endereço">
-                <input className="gp-input" value={form.endereco} onChange={e => upd("endereco", e.target.value)} placeholder="Rua, número — cidade, UF" />
+              <div className="col-span-2">
+                <FormRow label="Endereço">
+                  <input className="gp-input" value={form.endereco || ""} onChange={e => upd("endereco", e.target.value)} placeholder="Rua, número" />
+                </FormRow>
+              </div>
+              <FormRow label="Cidade">
+                <input className="gp-input" value={form.cidade || ""} onChange={e => upd("cidade", e.target.value)} placeholder="Ex.: São Paulo" />
+              </FormRow>
+              <FormRow label="UF">
+                <select className="gp-select" value={form.uf || ""} onChange={e => upd("uf", e.target.value)}>
+                  <option value="">Selecione…</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(u => <option key={u}>{u}</option>)}
+                </select>
               </FormRow>
               <FormRow label="Área Locável" suffix="m²">
                 <input className="gp-input mono" type="number" value={form.area_locavel ?? ""} onChange={e => upd("area_locavel", e.target.value)} placeholder="0" style={{ paddingRight: 32 }}/>

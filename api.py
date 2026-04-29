@@ -30,6 +30,12 @@ def _float(v):
         return None
 
 
+def _bool(v):
+    if v is None:
+        return None
+    return bool(v)
+
+
 def row_to_deal(row: dict) -> dict:
     updated_at = row.get("updated_at")
     return {
@@ -48,7 +54,7 @@ def row_to_deal(row: dict) -> dict:
         "estrategia": row.get("estrategia"),
         "veiculo_oferta": row.get("veiculo_oferta"),
         "perfil_vendedor": row.get("perfil_vendedor"),
-        "broker_envolvido": row.get("broker_envolvido"),
+        "broker_envolvido": _bool(row.get("broker_envolvido")),
         "nome_broker": row.get("nome_broker"),
         "principais_locatarios": row.get("principais_locatarios"),
         "proximos_passos": row.get("proximos_passos"),
@@ -76,6 +82,8 @@ class DealPayload(BaseModel):
     responsavel: Optional[str] = None
     perfil_ativo: Optional[str] = None
     endereco: Optional[str] = None
+    cidade: Optional[str] = None
+    uf: Optional[str] = None
     aluguel_mensal: Optional[float] = None
     ultimo_valor: Optional[float] = None
     yield_ultima_proposta: Optional[float] = None
@@ -125,6 +133,8 @@ def edit_deal(deal_id: int, payload: DealPayload):
             responsavel           = :responsavel,
             perfil_ativo          = :perfil_ativo,
             endereco              = :endereco,
+            cidade                = :cidade,
+            uf                    = :uf,
             aluguel_mensal        = :aluguel_mensal,
             ultimo_valor_enviado  = :ultimo_valor_enviado,
             yield_ultima_proposta = :yield_ultima_proposta,
@@ -148,6 +158,8 @@ def edit_deal(deal_id: int, payload: DealPayload):
             "responsavel": payload.responsavel,
             "perfil_ativo": payload.perfil_ativo,
             "endereco": payload.endereco,
+            "cidade": payload.cidade,
+            "uf": payload.uf,
             "aluguel_mensal": payload.aluguel_mensal,
             "ultimo_valor_enviado": payload.ultimo_valor,
             "yield_ultima_proposta": payload.yield_ultima_proposta,
