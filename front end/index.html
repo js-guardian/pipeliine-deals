@@ -656,8 +656,10 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
   const [fPerfil, setFPerfil] = useState("");
   const [fCidade, setFCidade] = useState("");
   const [fUF, setFUF] = useState("");
+  const [fBroker, setFBroker] = useState("");
 
   const cidadeOpts = useMemo(() => [...new Set(deals.map(d => d.cidade).filter(Boolean))].sort(), [deals]);
+  const brokerOpts = useMemo(() => [...new Set(deals.map(d => d.nome_broker).filter(Boolean))].sort(), [deals]);
   const ufOpts = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
   const filtered = useMemo(() => {
@@ -672,10 +674,11 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
         if (fPerfil && d.perfil_ativo !== fPerfil) return false;
         if (fCidade && d.cidade !== fCidade) return false;
         if (fUF && d.uf !== fUF) return false;
+        if (fBroker && d.nome_broker !== fBroker) return false;
         return true;
       })
       .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
-  }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF]);
+  }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF, fBroker]);
 
   return (
     <div className="px-8 py-7">
@@ -729,9 +732,13 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
           <option value="">UF — Todas</option>
           {ufOpts.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {(q || fStatus || fResp || fPerfil || fCidade || fUF) && (
+        <select className="gp-select" style={{ width: 150 }} value={fBroker} onChange={e => setFBroker(e.target.value)}>
+          <option value="">Broker — Todos</option>
+          {brokerOpts.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        {(q || fStatus || fResp || fPerfil || fCidade || fUF || fBroker) && (
           <button
-            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); setFCidade(""); setFUF(""); }}
+            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); setFCidade(""); setFUF(""); setFBroker(""); }}
             className="text-[11px] px-2 py-1.5 rounded" style={{ color: "var(--text-2)" }}>
             Limpar
           </button>
@@ -747,6 +754,8 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 220 }}>Status</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Resp.</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Perfil</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 200 }}>Próximos Passos</th>
+              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 200 }}>Histórico</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 180 }}>Endereço</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Cidade</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">UF</th>
@@ -760,8 +769,6 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
               <th className="text-center font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Broker</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Nome Broker</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 160 }}>Principais Locatários</th>
-              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 200 }}>Próximos Passos</th>
-              <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 200 }}>Histórico</th>
               <th className="text-right font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]">Atualizado</th>
             </tr>
           </thead>
@@ -780,6 +787,8 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
                 <td className="px-3 py-3" style={{ whiteSpace: "nowrap" }}><StatusBadge status={d.status} /></td>
                 <td className="px-3 py-3"><RespBadge r={d.responsavel} /></td>
                 <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.perfil_ativo || "—"}</td>
+                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 200 }}>{d.proximos_passos || "—"}</div></td>
+                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 200 }}>{d.historico_negociacoes || "—"}</div></td>
                 <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 180 }}>{d.endereco || "—"}</div></td>
                 <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.cidade || "—"}</td>
                 <td className="px-3 py-3 text-[12px] mono" style={{ color: "var(--text-2)" }}>{d.uf || "—"}</td>
@@ -793,8 +802,6 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
                 <td className="px-3 py-3 text-center text-[12px]" style={{ color: "var(--text-2)" }}>{d.broker_envolvido === true ? "Sim" : d.broker_envolvido === false ? "Não" : "—"}</td>
                 <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.nome_broker || "—"}</td>
                 <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 160 }}>{d.principais_locatarios || "—"}</div></td>
-                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 200 }}>{d.proximos_passos || "—"}</div></td>
-                <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 200 }}>{d.historico_negociacoes || "—"}</div></td>
                 <td className="px-4 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{relTime(d.updated_at)}</td>
               </tr>
             ))}
