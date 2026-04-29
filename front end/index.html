@@ -171,6 +171,17 @@ const PERFIL_COLORS = {
   "MISTO":      "#8592AA",
   "OUTROS":     "#AFABAB",
 };
+
+const TIPOLOGIA_COLORS = {
+  "LOGISTICA":    "#3B5279",
+  "OFFICE":       "#2E75B6",
+  "RENDA URBANA": "#8592AA",
+  "EDUCACIONAL":  "#4F5E9F",
+  "INDUSTRIAL":   "#4E95D9",
+  "LAB":          "#6FA0CD",
+  "SHOPPING":     "#2F5597",
+  "OUTROS":       "#AFABAB",
+};
 const PERFIL_OPTS = ["LOGISTICA","OFFICE","INDUSTRIAL","RETAIL","GALPÃO","MISTO"];
 const ESTRATEGIA_OPTS = ["COTAS","CASH","CETIPADO"];
 const VEICULO_OPTS = ["GARE","CETIPADO","DIRETO"];
@@ -335,40 +346,42 @@ function KpiCard({ label, value, color, sub, delta }) {
 
 function DashboardPage({ deals }) {
   const vol = (d) => d.ultimo_valor || 0;
+  const [fStatus, setFStatus] = useState("");
+  const filtered = fStatus ? deals.filter(d => d.status === fStatus) : deals;
 
-  const total = deals.length;
-  const volumeNegoc = deals.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO").reduce((s,d) => s + vol(d), 0);
-  const volume = deals.reduce((s,d) => s + vol(d), 0);
-  const volumeFechadosMes = deals
+  const total = filtered.length;
+  const volumeNegoc = filtered.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO").reduce((s,d) => s + vol(d), 0);
+  const volume = filtered.reduce((s,d) => s + vol(d), 0);
+  const volumeFechadosMes = filtered
     .filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear())
     .reduce((s,d) => s + vol(d), 0);
 
   // 1. Distribuição por status (volume financeiro R$ M)
   const propostasMap = [
-    { status: "OPORTUNIDADES RECEBIDAS",          label: "Recebidas",    color: PALETTE.gray3 },
     { status: "NEGOCIAÇÕES EM ANDAMENTO",          label: "Negociação",   color: PALETTE.blue1 },
     { status: "CONDIÇÕES COMERCIAIS FECHADAS",     label: "Fechadas",     color: PALETTE.navy },
+    { status: "OPORTUNIDADES RECEBIDAS",          label: "Recebidas",    color: PALETTE.gray3 },
     { status: "OPORTUNIDADES DESCARTADAS",         label: "Descartadas",  color: PALETTE.gray1 },
   ];
   const propostas = propostasMap.map(m => ({
     name: m.label,
-    value: +(deals.filter(d => d.status === m.status).reduce((s,d) => s + vol(d), 0) / 1_000_000).toFixed(1),
+    value: +(filtered.filter(d => d.status === m.status).reduce((s,d) => s + vol(d), 0) / 1_000_000).toFixed(1),
     color: m.color
   }));
 
   // 2. Volume por tipologia (R$ M)
   const tipologias = {};
-  deals.forEach(d => {
+  filtered.forEach(d => {
     const k = d.perfil_ativo || "OUTROS";
     tipologias[k] = (tipologias[k] || 0) + vol(d);
   });
   const volTipologia = Object.entries(tipologias)
-    .map(([k, v]) => ({ name: k, value: +(v/1_000_000).toFixed(1), color: PERFIL_COLORS[k] || PALETTE.gray3 }))
+    .map(([k, v]) => ({ name: k, value: +(v/1_000_000).toFixed(1), color: TIPOLOGIA_COLORS[k] || PALETTE.gray3 }))
     .sort((a,b) => b.value - a.value);
 
   // 3. Forma de aquisição (R$ M) — Dinheiro / Cotas / Misto
   const aquisicaoBuckets = { "Dinheiro": 0, "Cotas": 0, "Misto": 0 };
-  deals.forEach(d => {
+  filtered.forEach(d => {
     const e = (d.estrategia || "").toUpperCase();
     let bucket = "Misto";
     if (e === "CASH") bucket = "Dinheiro";
@@ -383,24 +396,19 @@ function DashboardPage({ deals }) {
   ];
   const aquisicaoTotal = aquisicao.reduce((s,d) => s + d.value, 0);
 
-  // 4. Volume por responsável (analisado vs fechado, R$ M)
-  const respMap = {};
-  RESP_OPTS.forEach(r => respMap[r] = { name: r, analisado: 0, fechado: 0 });
-  deals.forEach(d => {
-    if (!respMap[d.responsavel]) return;
-    const v = vol(d) / 1_000_000;
-    respMap[d.responsavel].analisado += v;
-    if (d.status === "CONDIÇÕES COMERCIAIS FECHADAS") respMap[d.responsavel].fechado += v;
+  // Volume por UF — filtro global quando ativo, senão apenas "NEGOCIAÇÕES EM ANDAMENTO"
+  const ufNegMap = {};
+  (fStatus ? filtered : deals.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO")).forEach(d => {
+    const k = d.uf || "N/D";
+    ufNegMap[k] = (ufNegMap[k] || 0) + vol(d);
   });
-  const volResp = Object.values(respMap).map(o => ({
-    name: o.name,
-    analisado: +o.analisado.toFixed(1),
-    fechado: +o.fechado.toFixed(1),
-  }));
+  const volUFNeg = Object.entries(ufNegMap)
+    .map(([k, v]) => ({ name: k, value: +(v/1_000_000).toFixed(1) }))
+    .sort((a, b) => b.value - a.value);
 
-  // 5. Deals originados por broker (R$ M)
+  // 4. Deals originados por broker (R$ M)
   const brokers = {};
-  deals.forEach(d => {
+  filtered.forEach(d => {
     if (!d.broker_envolvido || !d.nome_broker) return;
     brokers[d.nome_broker] = (brokers[d.nome_broker] || 0) + vol(d);
   });
@@ -410,10 +418,20 @@ function DashboardPage({ deals }) {
 
   return (
     <div className="px-8 py-7">
-      <div className="flex items-baseline justify-between mb-1">
+      <div className="flex items-center justify-between mb-1">
         <h1 className="text-[20px]" style={{ fontWeight: 600, color: "var(--text)" }}>Dashboard</h1>
-        <div className="text-[12px]" style={{ color: "var(--text-2)" }}>
-          <span className="mono">{TODAY.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span> · visão geral do pipeline
+        <div className="flex items-center gap-3">
+          <select
+            className="gp-select"
+            style={{ width: 240 }}
+            value={fStatus}
+            onChange={e => setFStatus(e.target.value)}>
+            <option value="">Status — Todos</option>
+            {STATUS_ORDER.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className="text-[12px]" style={{ color: "var(--text-2)" }}>
+            <span className="mono">{TODAY.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span> · visão geral do pipeline
+          </div>
         </div>
       </div>
       <div className="text-[13px] mb-6" style={{ color: "var(--text-2)" }}>
@@ -437,8 +455,8 @@ function DashboardPage({ deals }) {
             <BarChart data={propostas} margin={{ top: 14, right: 12, bottom: 4, left: -10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" vertical={false} />
               <XAxis dataKey="name" tick={{ fill: "#6B7385", fontSize: 11 }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} />
-              <YAxis tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}M`} />
-              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${v}M`, "Volume"]} />
+              <YAxis tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Number(v).toLocaleString('pt-BR')}M`} />
+              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${Number(v).toLocaleString('pt-BR')}M`, "Volume"]} />
               <Bar dataKey="value" radius={[4,4,0,0]}>
                 {propostas.map((e,i) => <Cell key={i} fill={e.color} />)}
               </Bar>
@@ -452,9 +470,9 @@ function DashboardPage({ deals }) {
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={volTipologia} layout="vertical" margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" horizontal={false} />
-              <XAxis type="number" tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} tickFormatter={(v) => `${v}M`} />
+              <XAxis type="number" tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} tickFormatter={(v) => `${Number(v).toLocaleString('pt-BR')}M`} />
               <YAxis type="category" dataKey="name" tick={{ fill: "#1B2233", fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
-              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${v}M`, "Volume"]} />
+              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${Number(v).toLocaleString('pt-BR')}M`, "Volume"]} />
               <Bar dataKey="value" radius={[0,4,4,0]}>
                 {volTipologia.map((e,i) => <Cell key={i} fill={e.color} />)}
               </Bar>
@@ -463,7 +481,7 @@ function DashboardPage({ deals }) {
         </ChartCard>
       </div>
 
-      {/* Row 2: Aquisição (donut) + Volume por responsável (grouped bars) */}
+      {/* Row 2: Aquisição (donut) + Volume por UF em negociação */}
       <div className="grid grid-cols-2 gap-4 mb-4">
         <ChartCard
           title="Forma de Aquisição"
@@ -475,7 +493,7 @@ function DashboardPage({ deals }) {
                   <Pie data={aquisicao} dataKey="value" nameKey="name" innerRadius={62} outerRadius={100} paddingAngle={2} stroke="#FFFFFF" strokeWidth={2}>
                     {aquisicao.map((e,i) => <Cell key={i} fill={e.color} />)}
                   </Pie>
-                  <Tooltip formatter={(v, n) => [`R$ ${v}M`, n]} />
+                  <Tooltip formatter={(v, n) => [`R$ ${Number(v).toLocaleString('pt-BR')}M`, n]} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -486,7 +504,7 @@ function DashboardPage({ deals }) {
                   <div key={p.name} className="flex items-center gap-3 text-[12px]">
                     <span className="w-2.5 h-2.5 rounded-sm" style={{ background: p.color }} />
                     <span style={{ color: "var(--text)" }} className="flex-1">{p.name}</span>
-                    <span className="mono" style={{ color: "var(--text-2)" }}>R$ {p.value}M</span>
+                    <span className="mono" style={{ color: "var(--text-2)" }}>R$ {Number(p.value).toLocaleString('pt-BR')}M</span>
                     <span className="mono" style={{ color: p.color, width: 38, textAlign: "right", fontWeight: 600 }}>{pct}%</span>
                   </div>
                 );
@@ -496,17 +514,15 @@ function DashboardPage({ deals }) {
         </ChartCard>
 
         <ChartCard
-          title="Volume por Responsável"
-          subtitle="R$ Milhões — Analisado vs Fechado"
-          legend={<><LegendDot color={PALETTE.blue1} label="Analisado" /><LegendDot color={PALETTE.navy} label="Fechado" /></>}>
+          title="Volume por UF"
+          subtitle="R$ Milhões — Negociações em andamento">
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={volResp} margin={{ top: 14, right: 12, bottom: 4, left: -10 }}>
+            <BarChart data={volUFNeg} margin={{ top: 8, right: 12, bottom: 4, left: -10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" vertical={false} />
-              <XAxis dataKey="name" tick={{ fill: "#1B2233", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} />
-              <YAxis tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}M`} />
-              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v, n) => [`R$ ${v}M`, n === "analisado" ? "Analisado" : "Fechado"]} />
-              <Bar dataKey="analisado" name="Analisado" fill={PALETTE.blue1} radius={[4,4,0,0]} />
-              <Bar dataKey="fechado"   name="Fechado"   fill={PALETTE.navy}  radius={[4,4,0,0]} />
+              <XAxis dataKey="name" tick={{ fill: "#1B2233", fontSize: 11 }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} />
+              <YAxis tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Number(v).toLocaleString('pt-BR')}M`} />
+              <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${Number(v).toLocaleString('pt-BR')}M`, "Volume"]} />
+              <Bar dataKey="value" fill={PALETTE.blue1} radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -525,9 +541,9 @@ function DashboardPage({ deals }) {
             <ResponsiveContainer width="100%" height={Math.max(220, 60 + brokerData.length * 38)}>
               <BarChart data={brokerData} layout="vertical" margin={{ top: 8, right: 64, bottom: 4, left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" horizontal={false} />
-                <XAxis type="number" tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} tickFormatter={(v) => `${v}M`} />
+                <XAxis type="number" tick={{ fill: "#6B7385", fontSize: 11, fontFamily: "DM Mono" }} axisLine={{ stroke: "#D6DCE6" }} tickLine={false} tickFormatter={(v) => `${Number(v).toLocaleString('pt-BR')}M`} />
                 <YAxis type="category" dataKey="name" tick={{ fill: "#1B2233", fontSize: 12 }} axisLine={false} tickLine={false} width={150} />
-                <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${v}M`, "Volume"]} />
+                <Tooltip cursor={{ fill: "rgba(59,82,121,0.06)" }} formatter={(v) => [`R$ ${Number(v).toLocaleString('pt-BR')}M`, "Volume"]} />
                 <Bar dataKey="value" fill={PALETTE.blue3} radius={[0,4,4,0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -746,9 +762,9 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
       </div>
 
       {/* table */}
-      <div className="rounded-lg overflow-hidden scrollbar" style={{ background: "var(--surface)", border: "1px solid var(--border)", overflowX: "auto" }}>
+      <div className="rounded-lg scrollbar" style={{ background: "var(--surface)", border: "1px solid var(--border)", overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 200px)" }}>
         <table className="text-[13px]" style={{ minWidth: 1800 }}>
-          <thead>
+          <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--surface)" }}>
             <tr style={{ color: "var(--text-2)", borderBottom: "1px solid var(--border)" }}>
               <th className="text-left font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 180 }}>Produto</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 220 }}>Status</th>
