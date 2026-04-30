@@ -882,6 +882,106 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
   );
 }
 
+// ---------- FILES ----------
+const STORAGE_BUCKET  = "pipeline-docs";
+const STORAGE_FOLDERS = [
+  { key: "material-imovel",      label: "Material Imóvel" },
+  { key: "teasers",              label: "Teaser" },
+  { key: "estudo-mercado",       label: "Estudo de Mercado" },
+  { key: "propostas-enviadas",   label: "Propostas Enviadas" },
+  { key: "modelo-aquisicao",     label: "Modelo de Aquisição" },
+];
+
+function FilesTab({ dealId }) {
+  const [files, setFiles]         = useState({});
+  const [uploading, setUploading] = useState({});
+  const [loading, setLoading]     = useState(true);
+
+  const loadFiles = async () => {
+    const result = {};
+    for (const { key } of STORAGE_FOLDERS) {
+      const { data } = await _supa.storage.from(STORAGE_BUCKET).list(`${key}/${dealId}`, { sortBy: { column: "name", order: "asc" } });
+      result[key] = (data || []).filter(f => f.name !== ".emptyFolderPlaceholder");
+    }
+    setFiles(result);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadFiles(); }, [dealId]);
+
+  const upload = async (folder, file) => {
+    setUploading(u => ({ ...u, [folder]: true }));
+    const path = `${folder}/${dealId}/${file.name}`;
+    const { error } = await _supa.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true });
+    if (error) alert("Erro ao enviar: " + error.message);
+    await loadFiles();
+    setUploading(u => ({ ...u, [folder]: false }));
+  };
+
+  const download = async (folder, filename) => {
+    const path = `${folder}/${dealId}/${filename}`;
+    const { data, error } = await _supa.storage.from(STORAGE_BUCKET).createSignedUrl(path, 3600);
+    if (error) { alert("Erro ao gerar link: " + error.message); return; }
+    window.open(data.signedUrl, "_blank");
+  };
+
+  const remove = async (folder, filename) => {
+    if (!confirm(`Excluir "${filename}"?`)) return;
+    const path = `${folder}/${dealId}/${filename}`;
+    await _supa.storage.from(STORAGE_BUCKET).remove([path]);
+    await loadFiles();
+  };
+
+  if (loading) return <div className="text-[12px] py-4" style={{ color: "var(--text-2)" }}>Carregando arquivos…</div>;
+
+  return (
+    <div className="flex flex-col gap-5">
+      {STORAGE_FOLDERS.map(({ key, label }) => (
+        <div key={key}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-[0.08em] font-medium" style={{ color: "var(--text-2)" }}>{label}</div>
+            <label className="cursor-pointer flex items-center gap-1 text-[11px] px-2.5 py-1 rounded font-medium"
+              style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
+              {uploading[key] ? "Enviando…" : "+ Anexar"}
+              <input type="file" className="hidden" disabled={uploading[key]}
+                onChange={e => { if (e.target.files[0]) upload(key, e.target.files[0]); e.target.value = ""; }} />
+            </label>
+          </div>
+          {(files[key] || []).length === 0 ? (
+            <div className="text-[12px] py-1.5 px-2 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
+              Nenhum arquivo
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {(files[key] || []).map(f => (
+                <div key={f.name} className="flex items-center gap-2 px-3 py-2 rounded text-[12px]"
+                  style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span className="flex-1 truncate" style={{ color: "var(--text)" }} title={f.name}>{f.name}</span>
+                  <button onClick={() => download(key, f.name)} title="Baixar"
+                    className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#3B5279" }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  </button>
+                  <button onClick={() => remove(key, f.name)} title="Excluir"
+                    className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ---------- DRAWER ----------
 function StatusEditor({ status, onChange }) {
   const [open, setOpen] = useState(false);
@@ -937,7 +1037,7 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave }) {
       <div className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.35)" }} onClick={onClose} />
       <aside
         className="fixed right-0 top-0 z-50 h-screen flex flex-col drawer-enter-active scrollbar"
-        style={{ width: 360, background: "var(--surface)", borderLeft: "1px solid var(--border)", overflowY: "auto" }}>
+        style={{ width: 420, background: "var(--surface)", borderLeft: "1px solid var(--border)", overflowY: "auto" }}>
         {/* header */}
         <div className="px-5 pt-5 pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
           <div className="flex items-start justify-between gap-3">
@@ -956,8 +1056,9 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave }) {
 
         {/* tabs */}
         <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
-          {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["hist","Histórico"]].map(([k,l]) => (
-            <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}>{l}</div>
+          {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["hist","Histórico"],["docs","Arquivos"]].map(([k,l]) => (
+            <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}
+              style={{ padding: "8px 10px", fontSize: 11 }}>{l}</div>
           ))}
         </div>
 
@@ -1037,6 +1138,8 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave }) {
               </div>
             </>
           )}
+
+          {tab === "docs" && <FilesTab dealId={deal.id} />}
         </div>
 
         <div className="px-5 py-3 flex items-center gap-2" style={{ borderTop: "1px solid var(--border)" }}>
