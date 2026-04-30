@@ -1,7 +1,13 @@
+import os
+import base64
+import math
+
+import jwt
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
@@ -17,9 +23,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------- AUTH ----------
+_SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+_bearer = HTTPBearer()
 
-import math
+def require_auth(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict:
+    if not _SUPABASE_JWT_SECRET:
+        raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET não configurado")
+    try:
+        return jwt.decode(
+            creds.credentials,
+            _SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado")
+    except Exception as e:
+        print(f"[AUTH ERROR] {type(e).__name__}: {e}")
+        print(f"[AUTH] secret length={len(_SUPABASE_JWT_SECRET)}, token[:40]={creds.credentials[:40]}")
+        raise HTTPException(status_code=401, detail=f"Token inválido: {type(e).__name__}: {e}")
 
+
+# ---------- HELPERS ----------
 def _float(v):
     if v is None:
         return None
@@ -66,13 +92,14 @@ def row_to_deal(row: dict) -> dict:
     }
 
 
+# ---------- ROUTES ----------
 @app.get("/")
 def serve_frontend():
     return FileResponse("front end/index.html")
 
 
 @app.get("/api/deals")
-def list_deals():
+def list_deals():  # AUTH TEMPORARIAMENTE DESABILITADO
     df = read_table("SELECT * FROM pipe_deals ORDER BY created_at DESC")
     return [row_to_deal(dict(row)) for _, row in df.iterrows()]
 
@@ -100,7 +127,7 @@ class DealPayload(BaseModel):
 
 
 @app.post("/api/deals", status_code=201)
-def create_deal(payload: DealPayload):
+def create_deal(payload: DealPayload):  # AUTH TEMPORARIAMENTE DESABILITADO
     new_id = insert_deal(
         user_id=1,
         ativo=payload.produto,
@@ -126,7 +153,7 @@ def create_deal(payload: DealPayload):
 
 
 @app.put("/api/deals/{deal_id}")
-def edit_deal(deal_id: int, payload: DealPayload):
+def edit_deal(deal_id: int, payload: DealPayload):  # AUTH TEMPORARIAMENTE DESABILITADO
     sql = text("""
         UPDATE pipe_deals SET
             ativo                 = :ativo,

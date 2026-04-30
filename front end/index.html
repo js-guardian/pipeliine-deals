@@ -24,6 +24,7 @@
 </script>
 <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
 <style>
@@ -132,6 +133,11 @@
 
 <script type="text/babel" data-presets="env,react">
 const { useState, useMemo, useEffect, useRef } = React;
+
+// ---------- SUPABASE ----------
+const SUPABASE_URL      = "https://varkabkouznhupdisdcg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhcmthYmtvdXpuaHVwZGlzZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNDgzNjEsImV4cCI6MjA5MjYyNDM2MX0.yZZez0QFu2WSQ1-6_paBBD7D7GQM9heWN9SGp28PCc0";
+const _supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const RC = window.Recharts;
 const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid } = RC;
 
@@ -297,7 +303,8 @@ function RespBadge({ r }) {
 }
 
 // ---------- SIDEBAR ----------
-function Sidebar({ view, setView }) {
+function Sidebar({ view, setView, onLogout, userEmail }) {
+  const initials = userEmail ? userEmail.slice(0, 2).toUpperCase() : "??";
   return (
     <aside className="flex flex-col" style={{ width: 168, background: "#3B5279", height: "100vh", position: "sticky", top: 0 }}>
       <div className="px-4 pt-5 pb-6">
@@ -320,14 +327,13 @@ function Sidebar({ view, setView }) {
         <div className="flex items-center gap-2">
           <div className="mono text-[11px] flex items-center justify-center"
                style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(47,201,255,0.18)", color: "#2FC9FF", border: "1px solid rgba(47,201,255,0.4)" }}>
-            CM
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[12px] truncate" style={{ color: "#fff" }}>Carlos M.</div>
-            <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.6)" }}>Analista</div>
+            <div className="text-[11px] truncate" style={{ color: "#fff" }}>{userEmail || ""}</div>
           </div>
         </div>
-        <button className="mt-3 w-full flex items-center gap-2 text-[12px] py-1.5 px-2 rounded" style={{ color: "rgba(255,255,255,0.7)" }}>
+        <button onClick={onLogout} className="mt-3 w-full flex items-center gap-2 text-[12px] py-1.5 px-2 rounded" style={{ color: "rgba(255,255,255,0.7)" }}>
           <IconLogout size={13} /> Sair
         </button>
       </div>
@@ -1337,18 +1343,97 @@ function DealModal({ initial, onClose, onSave }) {
   );
 }
 
+// ---------- LOGIN ----------
+function LoginScreen() {
+  const [step, setStep]       = useState("email");
+  const [email, setEmail]     = useState("");
+  const [otp, setOtp]         = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
+
+  const sendOTP = async () => {
+    if (!email.trim()) { setError("Digite seu e-mail."); return; }
+    setLoading(true); setError("");
+    const { error: e } = await _supa.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false } });
+    if (e) setError(e.message.includes("not allowed") ? "E-mail não cadastrado. Fale com o administrador." : e.message);
+    else setStep("otp");
+    setLoading(false);
+  };
+
+  const verifyOTP = async () => {
+    if (!otp.trim()) { setError("Digite o código recebido."); return; }
+    setLoading(true); setError("");
+    const { error: e } = await _supa.auth.verifyOtp({ email: email.trim(), token: otp.trim(), type: "email" });
+    if (e) setError("Código inválido ou expirado. Tente novamente.");
+    setLoading(false);
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen" style={{ background: "var(--bg)" }}>
+      <div className="rounded-xl p-8" style={{ width: 400, background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "0 8px 40px rgba(20,30,60,0.10)" }}>
+        <div className="mb-8 text-center">
+          <div className="text-[28px] italic" style={{ fontWeight: 700, color: "#3B5279" }}>Guardian</div>
+          <div className="text-[11px] tracking-[0.2em] mt-0.5" style={{ color: "#2FC9FF" }}>PIPELINE</div>
+        </div>
+
+        {step === "email" ? (
+          <>
+            <div className="mb-1" style={{ fontSize: 15, fontWeight: 600 }}>Entrar</div>
+            <div className="mb-5 text-[13px]" style={{ color: "var(--text-2)" }}>Digite seu e-mail e enviaremos um código de acesso.</div>
+            <label className="gp-label">E-mail</label>
+            <input className="gp-input mb-4" type="email" placeholder="seu@email.com"
+              value={email} onChange={e => { setEmail(e.target.value); setError(""); }}
+              onKeyDown={e => e.key === "Enter" && sendOTP()} autoFocus />
+            {error && <div className="mb-3 text-[12px] px-3 py-2 rounded" style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>{error}</div>}
+            <button onClick={sendOTP} disabled={loading} className="w-full py-2.5 rounded text-[13px] font-medium"
+              style={{ background: "#3B5279", color: "#fff", opacity: loading ? 0.7 : 1 }}>
+              {loading ? "Enviando…" : "Enviar código"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="mb-1" style={{ fontSize: 15, fontWeight: 600 }}>Verifique seu e-mail</div>
+            <div className="mb-5 text-[13px]" style={{ color: "var(--text-2)" }}>
+              Código enviado para <span style={{ color: "var(--text)", fontWeight: 500 }}>{email}</span>.
+            </div>
+            <label className="gp-label">Código de 8 dígitos</label>
+            <input className="gp-input mono mb-4" type="text" inputMode="numeric" maxLength={8} placeholder="00000000"
+              value={otp} onChange={e => { setOtp(e.target.value.replace(/\D/g, "")); setError(""); }}
+              onKeyDown={e => e.key === "Enter" && verifyOTP()} autoFocus
+              style={{ fontSize: 20, letterSpacing: "0.25em", textAlign: "center" }} />
+            {error && <div className="mb-3 text-[12px] px-3 py-2 rounded" style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>{error}</div>}
+            <button onClick={verifyOTP} disabled={loading} className="w-full py-2.5 rounded text-[13px] font-medium mb-3"
+              style={{ background: "#3B5279", color: "#fff", opacity: loading ? 0.7 : 1 }}>
+              {loading ? "Verificando…" : "Entrar"}
+            </button>
+            <button onClick={() => { setStep("email"); setOtp(""); setError(""); }}
+              className="w-full py-2 text-[12px]" style={{ color: "var(--text-2)" }}>
+              ← Usar outro e-mail
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- APP ----------
-function App() {
+function App({ session }) {
+  const authFetch = (url, opts = {}) => fetch(url, {
+    ...opts,
+    headers: { "Authorization": `Bearer ${session.access_token}`, ...(opts.headers || {}) },
+  });
+
   const [view, setView] = useState("dashboard");
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drawerId, setDrawerId] = useState(null);
-  const [modal, setModal] = useState(null); // null | {mode: 'new'} | {mode:'edit', deal}
+  const [modal, setModal] = useState(null);
 
   useEffect(() => {
-    fetch("/api/deals")
-      .then(r => r.json())
-      .then(data => { setDeals(data); setLoading(false); })
+    authFetch("/api/deals")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { setDeals(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -1363,37 +1448,39 @@ function App() {
   };
 
   const handleDrawerSave = (deal) => {
-    fetch(`/api/deals/${deal.id}`, {
+    authFetch(`/api/deals/${deal.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(deal),
     })
-      .then(r => r.json())
-      .then(saved => setDeals(ds => ds.map(d => d.id === saved.id ? saved : d)))
+      .then(r => r.ok ? r.json() : null)
+      .then(saved => saved && setDeals(ds => ds.map(d => d.id === saved.id ? saved : d)))
       .catch(console.error);
   };
 
   const handleSave = (payload) => {
     if (modal.mode === "edit") {
-      fetch(`/api/deals/${payload.id}`, {
+      authFetch(`/api/deals/${payload.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-        .then(r => r.json())
+        .then(r => r.ok ? r.json() : null)
         .then(saved => {
+          if (!saved) return;
           setDeals(ds => ds.map(d => d.id === saved.id ? saved : d));
           setDrawerId(saved.id);
         })
         .catch(console.error);
     } else {
-      fetch("/api/deals", {
+      authFetch("/api/deals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-        .then(r => r.json())
+        .then(r => r.ok ? r.json() : null)
         .then(saved => {
+          if (!saved) return;
           setDeals(ds => [saved, ...ds]);
           setDrawerId(saved.id);
         })
@@ -1401,6 +1488,8 @@ function App() {
     }
     setModal(null);
   };
+
+  const handleLogout = async () => { await _supa.auth.signOut(); };
 
   if (loading) {
     return (
@@ -1412,7 +1501,7 @@ function App() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar view={view} setView={setView} />
+      <Sidebar view={view} setView={setView} onLogout={handleLogout} userEmail={session.user.email} />
       <main className="flex-1 min-w-0">
         {view === "dashboard" && <DashboardPage deals={deals} />}
         {view === "deals" && (
@@ -1447,7 +1536,31 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+// ---------- ROOT (auth gate) ----------
+const _DEV_SKIP_AUTH = true; // TEMPORÁRIO — reverter para false após configurar SMTP
+
+function Root() {
+  const [session, setSession] = useState(undefined);
+
+  useEffect(() => {
+    if (_DEV_SKIP_AUTH) { setSession({ access_token: "dev", user: { email: "dev@local" } }); return; }
+    _supa.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const { data: { subscription } } = _supa.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (session === undefined) {
+    return (
+      <div className="flex items-center justify-center min-h-screen" style={{ color: "var(--text-2)", fontSize: 14 }}>
+        Carregando…
+      </div>
+    );
+  }
+  if (!session) return <LoginScreen />;
+  return <App session={session} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
 </script>
 </body>
 </html>
