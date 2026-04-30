@@ -4,4 +4,4 @@ psycopg2-binary
 sqlalchemy
 python-dotenv
 pandas
-PyJWT
+PyJWT[crypto]

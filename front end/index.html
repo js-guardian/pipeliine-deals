@@ -1537,7 +1537,7 @@ function App({ session }) {
 }
 
 // ---------- ROOT (auth gate) ----------
-const _DEV_SKIP_AUTH = true; // TEMPORÁRIO — reverter para false após configurar SMTP
+const _DEV_SKIP_AUTH = false;
 
 function Root() {
   const [session, setSession] = useState(undefined);

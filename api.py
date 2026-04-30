@@ -1,6 +1,8 @@
 import os
-import base64
+import json
 import math
+import urllib.request
+from functools import lru_cache
 
 import jwt
 import uvicorn
@@ -24,25 +26,46 @@ app.add_middleware(
 )
 
 # ---------- AUTH ----------
+_SUPABASE_URL        = "https://varkabkouznhupdisdcg.supabase.co"
 _SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 _bearer = HTTPBearer()
 
+@lru_cache(maxsize=1)
+def _get_jwks() -> dict:
+    url = f"{_SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+    with urllib.request.urlopen(url, timeout=5) as r:
+        return json.loads(r.read())
+
 def require_auth(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict:
-    if not _SUPABASE_JWT_SECRET:
-        raise HTTPException(status_code=500, detail="SUPABASE_JWT_SECRET não configurado")
+    token = creds.credentials
     try:
-        return jwt.decode(
-            creds.credentials,
-            _SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
+        header = jwt.get_unverified_header(token)
+        alg    = header.get("alg", "HS256")
+
+        if alg.startswith("ES"):
+            # Supabase new projects use ES256 with asymmetric keys via JWKS
+            from jwt.algorithms import ECAlgorithm
+            kid  = header.get("kid")
+            jwks = _get_jwks()
+            pub  = next(
+                (k for k in jwks.get("keys", []) if k.get("kid") == kid),
+                None,
+            )
+            if pub is None:
+                raise ValueError(f"kid '{kid}' não encontrado no JWKS")
+            public_key = ECAlgorithm.from_jwk(json.dumps(pub))
+            return jwt.decode(token, public_key, algorithms=["ES256"], options={"verify_aud": False})
+        else:
+            # HS256 fallback para projetos antigos
+            return jwt.decode(token, _SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expirado")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[AUTH ERROR] {type(e).__name__}: {e}")
-        print(f"[AUTH] secret length={len(_SUPABASE_JWT_SECRET)}, token[:40]={creds.credentials[:40]}")
-        raise HTTPException(status_code=401, detail=f"Token inválido: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=401, detail=f"Token inválido: {e}")
 
 
 # ---------- HELPERS ----------
@@ -99,7 +122,7 @@ def serve_frontend():
 
 
 @app.get("/api/deals")
-def list_deals():  # AUTH TEMPORARIAMENTE DESABILITADO
+def list_deals(_: dict = Depends(require_auth)):
     df = read_table("SELECT * FROM pipe_deals ORDER BY created_at DESC")
     return [row_to_deal(dict(row)) for _, row in df.iterrows()]
 
@@ -127,7 +150,7 @@ class DealPayload(BaseModel):
 
 
 @app.post("/api/deals", status_code=201)
-def create_deal(payload: DealPayload):  # AUTH TEMPORARIAMENTE DESABILITADO
+def create_deal(payload: DealPayload, _: dict = Depends(require_auth)):
     new_id = insert_deal(
         user_id=1,
         ativo=payload.produto,
@@ -153,7 +176,7 @@ def create_deal(payload: DealPayload):  # AUTH TEMPORARIAMENTE DESABILITADO
 
 
 @app.put("/api/deals/{deal_id}")
-def edit_deal(deal_id: int, payload: DealPayload):  # AUTH TEMPORARIAMENTE DESABILITADO
+def edit_deal(deal_id: int, payload: DealPayload, _: dict = Depends(require_auth)):
     sql = text("""
         UPDATE pipe_deals SET
             ativo                 = :ativo,
