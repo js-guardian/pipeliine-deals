@@ -113,6 +113,7 @@
 
   .row-hover:hover { background: var(--surface-2); }
   .row-selected { background: rgba(59,82,121,0.06); box-shadow: inset 3px 0 0 var(--c-navy); }
+  @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
 
   /* status dropdown */
   .status-pop { background: #FFFFFF; border: 1px solid var(--border-2); box-shadow: 0 14px 40px rgba(20,30,60,.12); }
@@ -195,6 +196,7 @@ const VENDEDOR_OPTS = ["FUNDO","BROKER","CONSULTORIA","PROPRIETÁRIO DIRETO","OU
 const RESP_OPTS = ["ACL","CM","GSA","GVM","JA","JS","PMK"];
 
 const TODAY = new Date();
+const MONTH_NAMES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
 // ---------- FORMATTERS ----------
 const fmtBRL = (n) => n == null ? "—" : "R$ " + Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
@@ -366,10 +368,37 @@ function KpiCard({ label, value, color, sub, delta }) {
   );
 }
 
+function Toast({ message }) {
+  return (
+    <div style={{
+      position: "fixed", top: "50%", left: "50%",
+      transform: "translate(-50%, -50%)",
+      background: "rgba(34, 197, 94, 0.60)",
+      backdropFilter: "blur(6px)",
+      color: "#fff", fontWeight: 600, fontSize: 16,
+      padding: "20px 40px", borderRadius: 14,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+      zIndex: 99999, pointerEvents: "none",
+      animation: "toast-in 0.2s ease",
+    }}>
+      {message}
+    </div>
+  );
+}
+
 function DashboardPage({ deals }) {
   const vol = (d) => d.ultimo_valor || 0;
   const [fStatus, setFStatus] = useState("");
-  const filtered = fStatus ? deals.filter(d => d.status === fStatus) : deals;
+  const [fMes, setFMes] = useState("");
+  const mesOpts = useMemo(() => {
+    const set = new Set(deals.map(d => d.created_at ? d.created_at.slice(0, 7) : null).filter(Boolean));
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [deals]);
+  const filtered = deals.filter(d => {
+    if (fStatus && d.status !== fStatus) return false;
+    if (fMes && (!d.created_at || d.created_at.slice(0, 7) !== fMes)) return false;
+    return true;
+  });
   const countMode = fStatus === "";
 
   const fmtTick  = countMode ? (v) => Number(v).toLocaleString('pt-BR') : (v) => `${Number(v).toLocaleString('pt-BR')}M`;
@@ -450,7 +479,7 @@ function DashboardPage({ deals }) {
 
   // Volume por UF — filtro global quando ativo, senão apenas "NEGOCIAÇÕES EM ANDAMENTO"
   const ufNegMap = {};
-  (fStatus ? filtered : deals.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO")).forEach(d => {
+  ((fStatus || fMes) ? filtered : deals.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO")).forEach(d => {
     const k = d.uf || "N/D";
     ufNegMap[k] = (ufNegMap[k] || 0) + (countMode ? 1 : vol(d));
   });
@@ -473,6 +502,17 @@ function DashboardPage({ deals }) {
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-[20px]" style={{ fontWeight: 600, color: "var(--text)" }}>Dashboard</h1>
         <div className="flex items-center gap-3">
+          <select
+            className="gp-select"
+            style={{ width: 120 }}
+            value={fMes}
+            onChange={e => setFMes(e.target.value)}>
+            <option value="">Mês — Todos</option>
+            {mesOpts.map(ym => {
+              const [y, m] = ym.split("-");
+              return <option key={ym} value={ym}>{MONTH_NAMES_PT[+m-1]}/{y}</option>;
+            })}
+          </select>
           <select
             className="gp-select"
             style={{ width: 240 }}
@@ -727,9 +767,14 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
   const [fCidade, setFCidade] = useState("");
   const [fUF, setFUF] = useState("");
   const [fBroker, setFBroker] = useState("");
+  const [fMes, setFMes] = useState("");
 
   const cidadeOpts = useMemo(() => [...new Set(deals.map(d => d.cidade).filter(Boolean))].sort(), [deals]);
   const brokerOpts = useMemo(() => [...new Set(deals.map(d => d.nome_broker).filter(Boolean))].sort(), [deals]);
+  const mesOpts = useMemo(() => {
+    const set = new Set(deals.map(d => d.created_at ? d.created_at.slice(0, 7) : null).filter(Boolean));
+    return [...set].sort((a, b) => b.localeCompare(a));
+  }, [deals]);
   const ufOpts = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
   const filtered = useMemo(() => {
@@ -745,10 +790,11 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
         if (fCidade && d.cidade !== fCidade) return false;
         if (fUF && d.uf !== fUF) return false;
         if (fBroker && d.nome_broker !== fBroker) return false;
+        if (fMes && (!d.created_at || d.created_at.slice(0, 7) !== fMes)) return false;
         return true;
       })
       .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
-  }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF, fBroker]);
+  }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF, fBroker, fMes]);
 
   return (
     <div className="px-8 py-7">
@@ -806,9 +852,16 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
           <option value="">Broker — Todos</option>
           {brokerOpts.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {(q || fStatus || fResp || fPerfil || fCidade || fUF || fBroker) && (
+        <select className="gp-select" style={{ width: 120 }} value={fMes} onChange={e => setFMes(e.target.value)}>
+          <option value="">Mês — Todos</option>
+          {mesOpts.map(ym => {
+            const [y, m] = ym.split("-");
+            return <option key={ym} value={ym}>{MONTH_NAMES_PT[+m-1]}/{y}</option>;
+          })}
+        </select>
+        {(q || fStatus || fResp || fPerfil || fCidade || fUF || fBroker || fMes) && (
           <button
-            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); setFCidade(""); setFUF(""); setFBroker(""); }}
+            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); setFCidade(""); setFUF(""); setFBroker(""); setFMes(""); }}
             className="text-[11px] px-2 py-1.5 rounded" style={{ color: "var(--text-2)" }}>
             Limpar
           </button>
@@ -839,12 +892,13 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
               <th className="text-center font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Broker</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Nome Broker</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 160 }}>Principais Locatários</th>
+              <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 90 }}>Inserido</th>
               <th className="text-right font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]">Atualizado</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={18} className="px-4 py-12 text-center text-[12px]" style={{ color: "var(--text-2)" }}>
+              <tr><td colSpan={21} className="px-4 py-12 text-center text-[12px]" style={{ color: "var(--text-2)" }}>
                 Nenhum deal encontrado com os filtros aplicados.
               </td></tr>
             )}
@@ -872,6 +926,7 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
                 <td className="px-3 py-3 text-center text-[12px]" style={{ color: "var(--text-2)" }}>{d.broker_envolvido === true ? "Sim" : d.broker_envolvido === false ? "Não" : "—"}</td>
                 <td className="px-3 py-3 text-[12px]" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.nome_broker || "—"}</td>
                 <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 160 }}>{d.principais_locatarios || "—"}</div></td>
+                <td className="px-3 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.created_at ? new Date(d.created_at).toLocaleDateString("pt-BR") : "—"}</td>
                 <td className="px-4 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{relTime(d.updated_at)}</td>
               </tr>
             ))}
@@ -1532,6 +1587,8 @@ function App({ session }) {
   const [loading, setLoading] = useState(true);
   const [drawerId, setDrawerId] = useState(null);
   const [modal, setModal] = useState(null);
+  const [toast, setToast] = useState(null);
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2000); };
 
   useEffect(() => {
     authFetch("/api/deals")
@@ -1573,6 +1630,7 @@ function App({ session }) {
           if (!saved) return;
           setDeals(ds => ds.map(d => d.id === saved.id ? saved : d));
           setDrawerId(saved.id);
+          showToast("Deal atualizado com sucesso");
         })
         .catch(console.error);
     } else {
@@ -1586,6 +1644,7 @@ function App({ session }) {
           if (!saved) return;
           setDeals(ds => [saved, ...ds]);
           setDrawerId(saved.id);
+          showToast("Deal cadastrado com sucesso");
         })
         .catch(console.error);
     }
@@ -1635,6 +1694,8 @@ function App({ session }) {
           onSave={handleSave}
         />
       )}
+
+      {toast && <Toast message={toast} />}
     </div>
   );
 }

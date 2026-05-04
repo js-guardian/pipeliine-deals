@@ -88,6 +88,7 @@ def _bool(v):
 def row_to_deal(row: dict) -> dict:
     row = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
     updated_at = row.get("updated_at")
+    created_at = row.get("created_at")
     return {
         "id": int(row["id"]),
         "produto": row.get("ativo"),
@@ -109,6 +110,7 @@ def row_to_deal(row: dict) -> dict:
         "principais_locatarios": row.get("principais_locatarios"),
         "proximos_passos": row.get("proximos_passos"),
         "historico_negociacoes": row.get("historico_negociacoes"),
+        "created_at": created_at.isoformat() if created_at else None,
         "updated_at": updated_at.isoformat() if updated_at else None,
         "preco_pedido": None,
         "ocupacao": None,
