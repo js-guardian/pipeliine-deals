@@ -965,11 +965,15 @@ function FilesTab({ dealId }) {
 
   useEffect(() => { loadFiles(); }, [dealId]);
 
-  const upload = async (folder, file) => {
+  const MULTI_FOLDERS = ["material-imovel", "propostas-enviadas"];
+
+  const upload = async (folder, files) => {
     setUploading(u => ({ ...u, [folder]: true }));
-    const path = `${folder}/${dealId}/${file.name}`;
-    const { error } = await _supa.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true });
-    if (error) alert("Erro ao enviar: " + error.message);
+    for (const file of (Array.isArray(files) ? files : [files])) {
+      const path = `${folder}/${dealId}/${file.name}`;
+      const { error } = await _supa.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: true });
+      if (error) alert("Erro ao enviar: " + error.message);
+    }
     await loadFiles();
     setUploading(u => ({ ...u, [folder]: false }));
   };
@@ -1000,7 +1004,8 @@ function FilesTab({ dealId }) {
               style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
               {uploading[key] ? "Enviando…" : "+ Anexar"}
               <input type="file" className="hidden" disabled={uploading[key]}
-                onChange={e => { if (e.target.files[0]) upload(key, e.target.files[0]); e.target.value = ""; }} />
+                multiple={MULTI_FOLDERS.includes(key)}
+                onChange={e => { const fs = Array.from(e.target.files); if (fs.length) upload(key, fs); e.target.value = ""; }} />
             </label>
           </div>
           {(files[key] || []).length === 0 ? (
@@ -1012,15 +1017,13 @@ function FilesTab({ dealId }) {
               {(files[key] || []).map(f => (
                 <div key={f.name} className="flex items-center gap-2 px-3 py-2 rounded text-[12px]"
                   style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                   </svg>
-                  <span className="flex-1 truncate" style={{ color: "var(--text)" }} title={f.name}>{f.name}</span>
-                  <button onClick={() => download(key, f.name)} title="Baixar"
-                    className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#3B5279" }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
+                  <button onClick={() => download(key, f.name)} title="Abrir arquivo"
+                    className="flex-1 truncate text-left hover:underline"
+                    style={{ color: "#3B5279", fontSize: 12, background: "none", border: "none", cursor: "pointer", minWidth: 0 }}>
+                    {f.name}
                   </button>
                   <button onClick={() => remove(key, f.name)} title="Excluir"
                     className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }}>
@@ -1766,7 +1769,7 @@ function App({ session }) {
 }
 
 // ---------- ROOT (auth gate) ----------
-const _DEV_SKIP_AUTH = false;
+const _DEV_SKIP_AUTH = false; // login ativo
 
 function Root() {
   const [session, setSession] = useState(undefined);
