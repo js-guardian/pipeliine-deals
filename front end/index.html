@@ -176,6 +176,7 @@ const PERFIL_COLORS = {
   "RETAIL":     "#6FA0CD",
   "GALPÃO":     "#2F5597",
   "MISTO":      "#8592AA",
+  "PORTFOLIO":  "#2FC9FF",
   "OUTROS":     "#AFABAB",
 };
 
@@ -189,7 +190,7 @@ const TIPOLOGIA_COLORS = {
   "SHOPPING":     "#2F5597",
   "OUTROS":       "#AFABAB",
 };
-const PERFIL_OPTS = ["LOGISTICA","OFFICE","INDUSTRIAL","RETAIL","GALPÃO","MISTO"];
+const PERFIL_OPTS = ["LOGISTICA","OFFICE","INDUSTRIAL","RETAIL","GALPÃO","MISTO","PORTFOLIO"];
 const ESTRATEGIA_OPTS = ["COTAS","CASH","CETIPADO"];
 const VEICULO_OPTS = ["GARE","CETIPADO","DIRETO"];
 const VENDEDOR_OPTS = ["FUNDO","BROKER","CONSULTORIA","PROPRIETÁRIO DIRETO","OUTRO"];
@@ -1240,6 +1241,7 @@ function DealModal({ initial, onClose, onSave }) {
   });
   const [tab, setTab] = useState("ident");
   const [error, setError] = useState("");
+  const [pendingFiles, setPendingFiles] = useState([]); // [{folderKey, folderLabel, file, id}] — only used for new deals
 
   const [autoHint, setAutoHint] = useState(null); // "yield" | "ultimo" | null
 
@@ -1298,7 +1300,7 @@ function DealModal({ initial, onClose, onSave }) {
       yield_ultima_proposta: form.yield_ultima_proposta === "" || form.yield_ultima_proposta == null ? null : Number(form.yield_ultima_proposta) / 100,
       updated_at: new Date().toISOString(),
     };
-    onSave(payload);
+    onSave(payload, isEdit ? [] : pendingFiles);
   };
 
   // for editing, convert stored decimals to display percentages
@@ -1334,8 +1336,12 @@ function DealModal({ initial, onClose, onSave }) {
         </div>
 
         <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
-          {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["acom","Acompanhamento"]].map(([k,l]) => (
-            <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}>{l}</div>
+          {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["acom","Acompanhamento"],["arq","Arquivos"]].map(([k,l]) => (
+            <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)} style={{ fontSize: 11 }}>
+              {l}{k === "arq" && !isEdit && pendingFiles.length > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center mono" style={{ fontSize: 9, minWidth: 15, height: 15, borderRadius: 999, background: "#2FC9FF", color: "#fff", fontWeight: 700, padding: "0 4px" }}>{pendingFiles.length}</span>
+              )}
+            </div>
           ))}
         </div>
 
@@ -1483,6 +1489,59 @@ function DealModal({ initial, onClose, onSave }) {
               </div>
             </div>
           )}
+
+          {tab === "arq" && (
+            isEdit ? (
+              <FilesTab dealId={initial.id} />
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="text-[12px] px-3 py-2.5 rounded-md" style={{ background: "rgba(47,201,255,0.08)", border: "1px solid rgba(47,201,255,0.3)", color: "#2F5597" }}>
+                  Selecione os arquivos abaixo. Eles serão enviados automaticamente após salvar o deal.
+                </div>
+                {STORAGE_FOLDERS.map(({ key, label }) => {
+                  const folderPending = pendingFiles.filter(pf => pf.folderKey === key);
+                  return (
+                    <div key={key}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-[10px] uppercase tracking-[0.08em] font-medium" style={{ color: "var(--text-2)" }}>{label}</div>
+                        <label className="cursor-pointer flex items-center gap-1 text-[11px] px-2.5 py-1 rounded font-medium"
+                          style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
+                          + Adicionar
+                          <input type="file" className="hidden"
+                            onChange={e => {
+                              const f = e.target.files[0];
+                              if (f) setPendingFiles(prev => [...prev, { folderKey: key, folderLabel: label, file: f, id: Date.now() + Math.random() }]);
+                              e.target.value = "";
+                            }} />
+                        </label>
+                      </div>
+                      {folderPending.length === 0 ? (
+                        <div className="text-[12px] py-1.5 px-2 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
+                          Nenhum arquivo selecionado
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          {folderPending.map(pf => (
+                            <div key={pf.id} className="flex items-center gap-2 px-3 py-2 rounded text-[12px]"
+                              style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                              </svg>
+                              <span className="flex-1 truncate" style={{ color: "var(--text)" }} title={pf.file.name}>{pf.file.name}</span>
+                              <button type="button" onClick={() => setPendingFiles(prev => prev.filter(p => p.id !== pf.id))}
+                                className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#D9534F" }}>
+                                <IconClose size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
         </div>
 
         <div className="px-6 py-4 flex items-center justify-between" style={{ borderTop: "1px solid var(--border)" }}>
@@ -1618,7 +1677,7 @@ function App({ session }) {
       .catch(console.error);
   };
 
-  const handleSave = (payload) => {
+  const handleSave = (payload, pendingFiles = []) => {
     if (modal.mode === "edit") {
       authFetch(`/api/deals/${payload.id}`, {
         method: "PUT",
@@ -1640,10 +1699,16 @@ function App({ session }) {
         body: JSON.stringify(payload),
       })
         .then(r => r.ok ? r.json() : null)
-        .then(saved => {
+        .then(async saved => {
           if (!saved) return;
           setDeals(ds => [saved, ...ds]);
           setDrawerId(saved.id);
+          if (pendingFiles.length > 0) {
+            for (const pf of pendingFiles) {
+              const path = `${pf.folderKey}/${saved.id}/${pf.file.name}`;
+              await _supa.storage.from(STORAGE_BUCKET).upload(path, pf.file, { upsert: true });
+            }
+          }
           showToast("Deal cadastrado com sucesso");
         })
         .catch(console.error);
