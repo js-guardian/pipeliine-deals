@@ -1087,6 +1087,243 @@ function FilesTab({ dealId }) {
   );
 }
 
+// ---------- HISTORICO NEGOCIACOES TAB ----------
+const HIST_TIPO_COLORS = {
+  "PROPOSTA ENVIADA":   { bg: "rgba(47,85,151,0.10)",  border: "rgba(47,85,151,0.25)",  text: "#2F5597" },
+  "PROPOSTA RECEBIDA":  { bg: "rgba(78,149,217,0.10)", border: "rgba(78,149,217,0.25)", text: "#4E95D9" },
+  "CONTRAPROPOSTA":     { bg: "rgba(47,201,255,0.10)", border: "rgba(47,201,255,0.25)", text: "#1A9FC0" },
+  "REUNIÃO REALIZADA":  { bg: "rgba(133,146,170,0.12)",border: "rgba(133,146,170,0.3)", text: "#6B7385" },
+  "RECUSA":             { bg: "rgba(220,38,38,0.08)",  border: "rgba(220,38,38,0.2)",   text: "#DC2626" },
+  "OUTRO":              { bg: "rgba(175,171,171,0.15)",border: "rgba(175,171,171,0.3)", text: "#8592AA" },
+};
+const HIST_TIPO_OPTS = Object.keys(HIST_TIPO_COLORS);
+const MODO_PGTO_OPTS = ["CASH","COTAS","CETIPADO","MISTO"];
+
+const EMPTY_HIST = { tipo: "", valor_aquisicao: "", cap: "", modo_pgto: "", entrada_pct: "", parcelamento: "", notas: "" };
+
+function HistoricoNegTab({ deal, authFetch }) {
+  const [items, setItems]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);   // null | "new" | item
+  const [form, setForm]       = useState({});
+  const [saving, setSaving]   = useState(false);
+
+  const load = () => {
+    authFetch(`/api/deals/${deal.id}/historico`)
+      .then(r => r.json())
+      .then(data => { setItems(Array.isArray(data) ? data : []); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [deal.id]);
+
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  const openNew  = () => { setForm({...EMPTY_HIST}); setEditing("new"); };
+  const openEdit = (item) => {
+    setForm({
+      ...item,
+      valor_aquisicao: item.valor_aquisicao ?? "",
+      cap:             item.cap != null ? +(item.cap * 100).toFixed(4) : "",
+      entrada_pct:     item.entrada_pct != null ? +(item.entrada_pct * 100).toFixed(2) : "",
+    });
+    setEditing(item);
+  };
+  const cancel = () => { setEditing(null); setForm({}); };
+
+  const toPayload = () => ({
+    tipo:            form.tipo            || null,
+    valor_aquisicao: form.valor_aquisicao !== "" ? Number(form.valor_aquisicao) : null,
+    cap:             form.cap             !== "" ? Number(form.cap) / 100        : null,
+    modo_pgto:       form.modo_pgto       || null,
+    entrada_pct:     form.entrada_pct     !== "" ? Number(form.entrada_pct) / 100 : null,
+    parcelamento:    form.parcelamento    || null,
+    notas:           form.notas           || null,
+  });
+
+  const save = async () => {
+    setSaving(true);
+    const payload = toPayload();
+    if (editing === "new") {
+      await authFetch(`/api/deals/${deal.id}/historico`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+    } else {
+      await authFetch(`/api/historico/${editing.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+    }
+    setSaving(false); cancel(); load();
+  };
+
+  const remove = async (item) => {
+    if (!confirm(`Excluir este registro de "${item.tipo || "histórico"}"?`)) return;
+    await authFetch(`/api/historico/${item.id}`, { method: "DELETE" });
+    load();
+  };
+
+  const upd = (k, v) => setForm(f => ({...f, [k]: v}));
+
+  const InlineForm = ({ label }) => (
+    <div className="rounded-lg p-3 flex flex-col gap-3" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
+      <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>{label}</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="gp-label">Tipo</label>
+          <select className="gp-select" value={form.tipo || ""} onChange={e => upd("tipo", e.target.value)}>
+            <option value="">Selecione…</option>
+            {HIST_TIPO_OPTS.map(t => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="gp-label">Valor Aquisição</label>
+          <CurrencyInput value={form.valor_aquisicao ?? ""} onChange={v => upd("valor_aquisicao", v)} placeholder="0" />
+        </div>
+        <div>
+          <label className="gp-label">Cap Rate (%)</label>
+          <input className="gp-input mono" type="number" step="0.01" value={form.cap ?? ""} onChange={e => upd("cap", e.target.value)} placeholder="Ex: 9.9" />
+        </div>
+        <div>
+          <label className="gp-label">Modo Pgto</label>
+          <select className="gp-select" value={form.modo_pgto || ""} onChange={e => upd("modo_pgto", e.target.value)}>
+            <option value="">Selecione…</option>
+            {MODO_PGTO_OPTS.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="gp-label">Entrada (%)</label>
+          <input className="gp-input mono" type="number" step="1" min="0" max="100" value={form.entrada_pct ?? ""} onChange={e => upd("entrada_pct", e.target.value)} placeholder="Ex: 40" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Parcelamento</label>
+          <input className="gp-input" value={form.parcelamento || ""} onChange={e => upd("parcelamento", e.target.value)} placeholder="Ex: 30% em 24m em cash" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Notas</label>
+          <textarea className="gp-textarea scrollbar" rows={3} value={form.notas || ""} onChange={e => upd("notas", e.target.value)} placeholder="Observações adicionais…" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 justify-end">
+        <button onClick={cancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
+        <button onClick={save} disabled={saving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#3B5279", color: "#fff" }}>
+          {saving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+
+  if (loading) return <div className="text-[12px] py-4" style={{ color: "var(--text-2)" }}>Carregando histórico…</div>;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {items.length === 0 && editing !== "new" && (
+        <div className="text-[12px] py-3 px-3 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
+          Nenhum registro encontrado.
+        </div>
+      )}
+
+      {items.map((item, idx) => {
+        const colors  = HIST_TIPO_COLORS[item.tipo] || HIST_TIPO_COLORS["OUTRO"];
+        const isLast  = idx === items.length - 1;
+        const isEditing = editing && editing !== "new" && editing.id === item.id;
+        return (
+          <React.Fragment key={item.id}>
+            <div className="relative flex gap-3">
+              {/* timeline dot + line */}
+              <div className="flex flex-col items-center" style={{ width: 18, flexShrink: 0 }}>
+                <div className="w-2.5 h-2.5 rounded-full mt-1.5" style={{ background: colors.text, flexShrink: 0 }} />
+                {(!isLast || editing === "new") && <div className="flex-1 w-px mt-1" style={{ background: "var(--border-2)", minHeight: 12 }} />}
+              </div>
+
+              {/* card */}
+              <div className="flex-1 rounded-lg p-3 mb-1" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {item.tipo && (
+                      <span className="text-[10px] px-2 py-0.5 rounded font-semibold tracking-wide"
+                        style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
+                        {item.tipo}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.created_at)}</span>
+                    <button onClick={() => isEditing ? cancel() : openEdit(item)}
+                      className="p-1 rounded hover:bg-[var(--border)]"
+                      style={{ color: isEditing ? "#DC2626" : "#3B5279" }} title="Editar">
+                      <IconEdit size={12}/>
+                    </button>
+                    <button onClick={() => remove(item)} className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }} title="Excluir">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {(item.valor_aquisicao != null || item.cap != null || item.modo_pgto || item.entrada_pct != null) && (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-2 pb-2" style={{ borderBottom: "1px solid var(--border)" }}>
+                    {item.valor_aquisicao != null && (
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Valor Aquisição</div>
+                        <div className="mono text-[12px] font-semibold">{fmtBRL(item.valor_aquisicao)}</div>
+                      </div>
+                    )}
+                    {item.cap != null && (
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Cap Rate</div>
+                        <div className="mono text-[12px] font-semibold">{fmtPct(item.cap)}</div>
+                      </div>
+                    )}
+                    {item.modo_pgto && (
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Modo Pgto</div>
+                        <div className="text-[12px]">{item.modo_pgto}</div>
+                      </div>
+                    )}
+                    {item.entrada_pct != null && (
+                      <div>
+                        <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Entrada</div>
+                        <div className="mono text-[12px]">{fmtPct(item.entrada_pct)}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {item.parcelamento && (
+                  <div className="mb-1.5">
+                    <div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Parcelamento</div>
+                    <div className="text-[12px]" style={{ whiteSpace: "pre-line" }}>{item.parcelamento}</div>
+                  </div>
+                )}
+                {item.notas && (
+                  <div className="text-[11px] pt-1.5" style={{ color: "var(--text-2)", borderTop: item.parcelamento ? "1px solid var(--border)" : "none" }}>
+                    {item.notas}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {isEditing && <InlineForm label="Editar Registro" />}
+          </React.Fragment>
+        );
+      })}
+
+      {editing === "new" && <InlineForm label="Novo Registro" />}
+
+      {!editing && (
+        <button onClick={openNew} className="flex items-center gap-1.5 text-[12px] px-3 py-2 rounded font-medium self-start mt-1"
+          style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
+          <IconPlus size={13}/> Adicionar Registro
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---------- PORTFOLIO TAB ----------
 const TIPOLOGIA_OPTS = Object.keys(TIPOLOGIA_COLORS).filter(k => k !== "OUTROS");
 
@@ -1372,17 +1609,18 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
         </div>
 
         {/* tabs */}
-        <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="flex scrollbar" style={{ borderBottom: "1px solid var(--border)", overflowX: "auto", overflowY: "hidden" }}>
           {[
-            ["ident","Identificação"],
+            ["ident","Ident."],
             ["fin","Financeiro"],
-            ["contra","Contraparte"],
+            ["contra","Contra."],
             ["hist","Histórico"],
+            ["negoc","Negoc."],
             ...(isPortfolio ? [["port","Portfólio"]] : []),
             ["docs","Arquivos"],
           ].map(([k,l]) => (
             <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}
-              style={{ padding: "8px 10px", fontSize: 11 }}>{l}</div>
+              style={{ padding: "8px 9px", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>{l}</div>
           ))}
         </div>
 
@@ -1462,6 +1700,8 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
               </div>
             </>
           )}
+
+          {tab === "negoc" && <HistoricoNegTab deal={deal} authFetch={authFetch} />}
 
           {tab === "port" && isPortfolio && <PortfolioTab deal={deal} authFetch={authFetch} />}
 
