@@ -173,7 +173,7 @@ const PERFIL_COLORS = {
   "LOGISTICA":  "#3B5279",
   "OFFICE":     "#2E75B6",
   "INDUSTRIAL": "#4E95D9",
-  "RETAIL":     "#6FA0CD",
+  "RENDA URBANA": "#6FA0CD",
   "GALPÃO":     "#2F5597",
   "MISTO":      "#8592AA",
   "PORTFOLIO":  "#2FC9FF",
@@ -190,7 +190,7 @@ const TIPOLOGIA_COLORS = {
   "SHOPPING":     "#2F5597",
   "OUTROS":       "#AFABAB",
 };
-const PERFIL_OPTS = ["LOGISTICA","OFFICE","INDUSTRIAL","RETAIL","GALPÃO","MISTO","PORTFOLIO"];
+const PERFIL_OPTS = ["LOGISTICA","OFFICE","INDUSTRIAL","RENDA URBANA","GALPÃO","MISTO","PORTFOLIO"];
 const ESTRATEGIA_OPTS = ["COTAS","CASH","CETIPADO"];
 const VEICULO_OPTS = ["GARE","CETIPADO","DIRETO"];
 const VENDEDOR_OPTS = ["FUNDO","BROKER","CONSULTORIA","PROPRIETÁRIO DIRETO","OUTRO"];
@@ -387,20 +387,63 @@ function Toast({ message }) {
   );
 }
 
+function MultiSelect({ options, values, onChange, placeholder, width }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const toggle = (v) => onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
+  const label = values.length === 0
+    ? placeholder
+    : values.length === 1
+      ? (options.find(o => o.value === values[0])?.label || values[0])
+      : `${values.length} selecionados`;
+  return (
+    <div className="relative" ref={ref} style={{ width }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="gp-select w-full flex items-center justify-between gap-1"
+        style={{ cursor: "pointer", paddingRight: 8 }}>
+        <span className="truncate text-[12px]" style={{ color: values.length === 0 ? "var(--text-2)" : "var(--text)" }}>{label}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-50 mt-1 rounded-md p-1 scrollbar"
+          style={{ background: "#fff", border: "1px solid var(--border)", boxShadow: "0 8px 24px rgba(20,30,60,.12)", minWidth: "100%", maxHeight: 220, overflowY: "auto" }}>
+          {options.map(opt => (
+            <label key={opt.value}
+              className="flex items-center gap-2 px-3 py-2 rounded text-[12px] cursor-pointer hover:bg-[var(--surface-2)]"
+              style={{ color: "var(--text)", userSelect: "none" }}>
+              <input type="checkbox" checked={values.includes(opt.value)} onChange={() => toggle(opt.value)}
+                style={{ accentColor: "#3B5279", cursor: "pointer" }} />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardPage({ deals }) {
   const vol = (d) => d.ultimo_valor || 0;
-  const [fStatus, setFStatus] = useState("");
-  const [fMes, setFMes] = useState("");
+  const [fStatuses, setFStatuses] = useState([]);
+  const [fMeses, setFMeses] = useState([]);
   const mesOpts = useMemo(() => {
     const set = new Set(deals.map(d => d.created_at ? d.created_at.slice(0, 7) : null).filter(Boolean));
     return [...set].sort((a, b) => b.localeCompare(a));
   }, [deals]);
   const filtered = deals.filter(d => {
-    if (fStatus && d.status !== fStatus) return false;
-    if (fMes && (!d.created_at || d.created_at.slice(0, 7) !== fMes)) return false;
+    if (fStatuses.length > 0 && !fStatuses.includes(d.status)) return false;
+    if (fMeses.length > 0 && (!d.created_at || !fMeses.includes(d.created_at.slice(0, 7)))) return false;
     return true;
   });
-  const countMode = fStatus === "";
+  const countMode = fStatuses.length === 0;
 
   const fmtTick  = countMode ? (v) => Number(v).toLocaleString('pt-BR') : (v) => `${Number(v).toLocaleString('pt-BR')}M`;
   const fmtTip   = countMode ? (v) => [Number(v).toLocaleString('pt-BR'), "Deals"] : (v) => [`R$ ${Number(v).toLocaleString('pt-BR')}M`, "Volume"];
@@ -409,31 +452,39 @@ function DashboardPage({ deals }) {
   const total = filtered.length;
   const volumeNegoc = filtered.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO").reduce((s,d) => s + vol(d), 0);
   const volume = filtered.reduce((s,d) => s + vol(d), 0);
-  const volumeFechadosMes = filtered
-    .filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear())
-    .reduce((s,d) => s + vol(d), 0);
+  const volumeFechadosMes = fMeses.length > 0
+    ? filtered.filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS").reduce((s,d) => s + vol(d), 0)
+    : filtered.filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && new Date(d.updated_at).getMonth() === TODAY.getMonth() && new Date(d.updated_at).getFullYear() === TODAY.getFullYear()).reduce((s,d) => s + vol(d), 0);
 
-  // Deltas mês atual vs mês anterior (usando updated_at)
+  // Deltas — meses selecionados vs meses anteriores (created_at), ou mês atual vs anterior (updated_at)
   const curM = TODAY.getMonth(), curY = TODAY.getFullYear();
   const prevM = curM === 0 ? 11 : curM - 1, prevY = curM === 0 ? curY - 1 : curY;
-  const inMonth = (d, m, y) => { const dt = new Date(d.updated_at); return dt.getMonth() === m && dt.getFullYear() === y; };
+  const inMonth = (d, m, y) => { const dt = new Date(d.created_at); return dt.getMonth() === m && dt.getFullYear() === y; };
   const pctDelta = (curr, prev) => prev === 0 ? 0 : +((curr - prev) / prev * 100).toFixed(1);
 
+  const prevMonthsForDelta = fMeses.map(ym => {
+    const [y, m] = ym.split("-").map(Number);
+    return m === 1 ? `${y-1}-12` : `${y}-${String(m-1).padStart(2, "0")}`;
+  });
+  const deltaBase = fStatuses.length > 0 ? deals.filter(d => fStatuses.includes(d.status)) : deals;
+  const inCur  = (d) => fMeses.length > 0 ? !!(d.created_at && fMeses.includes(d.created_at.slice(0,7))) : inMonth(d, curM, curY);
+  const inPrev = (d) => fMeses.length > 0 ? !!(d.created_at && prevMonthsForDelta.includes(d.created_at.slice(0,7))) : inMonth(d, prevM, prevY);
+
   const deltaTotalDeals = pctDelta(
-    filtered.filter(d => inMonth(d, curM, curY)).length,
-    filtered.filter(d => inMonth(d, prevM, prevY)).length
+    deltaBase.filter(inCur).length,
+    deltaBase.filter(inPrev).length
   );
   const deltaNegoc = pctDelta(
-    filtered.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO" && inMonth(d, curM, curY)).reduce((s,d) => s + vol(d), 0),
-    filtered.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO" && inMonth(d, prevM, prevY)).reduce((s,d) => s + vol(d), 0)
+    deltaBase.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO" && inCur(d)).reduce((s,d) => s + vol(d), 0),
+    deltaBase.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO" && inPrev(d)).reduce((s,d) => s + vol(d), 0)
   );
   const deltaVolume = pctDelta(
-    filtered.filter(d => inMonth(d, curM, curY)).reduce((s,d) => s + vol(d), 0),
-    filtered.filter(d => inMonth(d, prevM, prevY)).reduce((s,d) => s + vol(d), 0)
+    deltaBase.filter(inCur).reduce((s,d) => s + vol(d), 0),
+    deltaBase.filter(inPrev).reduce((s,d) => s + vol(d), 0)
   );
   const deltaFech = pctDelta(
-    filtered.filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && inMonth(d, curM, curY)).reduce((s,d) => s + vol(d), 0),
-    filtered.filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && inMonth(d, prevM, prevY)).reduce((s,d) => s + vol(d), 0)
+    deltaBase.filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && inCur(d)).reduce((s,d) => s + vol(d), 0),
+    deltaBase.filter(d => d.status === "CONDIÇÕES COMERCIAIS FECHADAS" && inPrev(d)).reduce((s,d) => s + vol(d), 0)
   );
 
   // 1. Distribuição por status (volume financeiro R$ M)
@@ -480,7 +531,7 @@ function DashboardPage({ deals }) {
 
   // Volume por UF — filtro global quando ativo, senão apenas "NEGOCIAÇÕES EM ANDAMENTO"
   const ufNegMap = {};
-  ((fStatus || fMes) ? filtered : deals.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO")).forEach(d => {
+  ((fStatuses.length > 0 || fMeses.length > 0) ? filtered : deals.filter(d => d.status === "NEGOCIAÇÕES EM ANDAMENTO")).forEach(d => {
     const k = d.uf || "N/D";
     ufNegMap[k] = (ufNegMap[k] || 0) + (countMode ? 1 : vol(d));
   });
@@ -492,10 +543,10 @@ function DashboardPage({ deals }) {
   const brokers = {};
   filtered.forEach(d => {
     if (!d.broker_envolvido || !d.nome_broker) return;
-    brokers[d.nome_broker] = (brokers[d.nome_broker] || 0) + (countMode ? 1 : vol(d));
+    brokers[d.nome_broker] = (brokers[d.nome_broker] || 0) + 1;
   });
   const brokerData = Object.entries(brokers)
-    .map(([k, v]) => ({ name: k, value: countMode ? v : +(v/1_000_000).toFixed(1) }))
+    .map(([k, v]) => ({ name: k, value: v }))
     .sort((a,b) => b.value - a.value);
 
   return (
@@ -503,25 +554,20 @@ function DashboardPage({ deals }) {
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-[20px]" style={{ fontWeight: 600, color: "var(--text)" }}>Dashboard</h1>
         <div className="flex items-center gap-3">
-          <select
-            className="gp-select"
-            style={{ width: 120 }}
-            value={fMes}
-            onChange={e => setFMes(e.target.value)}>
-            <option value="">Mês — Todos</option>
-            {mesOpts.map(ym => {
-              const [y, m] = ym.split("-");
-              return <option key={ym} value={ym}>{MONTH_NAMES_PT[+m-1]}/{y}</option>;
-            })}
-          </select>
-          <select
-            className="gp-select"
-            style={{ width: 240 }}
-            value={fStatus}
-            onChange={e => setFStatus(e.target.value)}>
-            <option value="">Status — Todos</option>
-            {STATUS_ORDER.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <MultiSelect
+            options={mesOpts.map(ym => { const [y,m]=ym.split("-"); return { value: ym, label: `${MONTH_NAMES_PT[+m-1]}/${y}` }; })}
+            values={fMeses}
+            onChange={setFMeses}
+            placeholder="Mês — Todos"
+            width={130}
+          />
+          <MultiSelect
+            options={STATUS_ORDER.map(s => ({ value: s, label: STATUS_SHORT[s] || s }))}
+            values={fStatuses}
+            onChange={setFStatuses}
+            placeholder="Status — Todos"
+            width={200}
+          />
           <div className="text-[12px]" style={{ color: "var(--text-2)" }}>
             <span className="mono">{TODAY.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span> · visão geral do pipeline
           </div>
@@ -536,7 +582,7 @@ function DashboardPage({ deals }) {
         <KpiCard label="Total de Deals" value={total} color={PALETTE.navy} sub="ativos no pipeline" delta={deltaTotalDeals} />
         <KpiCard label="Em Negociação" value={fmtMillions(volumeNegoc)} color={PALETTE.blue1} sub="volume — negociações em andamento" delta={deltaNegoc} />
         <KpiCard label="Volume Total" value={fmtMillions(volume)} color={PALETTE.blue3} sub="soma do último valor enviado" delta={deltaVolume} />
-        <KpiCard label="Fechados este mês" value={fmtMillions(volumeFechadosMes)} color={PALETTE.cyan} sub={`volume fechado · ${TODAY.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}`} delta={deltaFech} />
+        <KpiCard label="Fechados este mês" value={fmtMillions(volumeFechadosMes)} color={PALETTE.cyan} sub={fMeses.length > 0 ? `volume fechado · ${fMeses.map(ym => { const [y,m]=ym.split("-"); return MONTH_NAMES_PT[+m-1]+"/"+y; }).join(", ")}` : "volume fechado total"} delta={deltaFech} />
       </div>
 
       {/* Row 1: Propostas + Tipologia */}
@@ -627,7 +673,7 @@ function DashboardPage({ deals }) {
       <div className="grid grid-cols-1 gap-4">
         <ChartCard
           title="Deals Originados por Broker"
-          subtitle={countMode ? "Número de deals por broker" : "R$ Milhões trazidos por cada broker"}>
+          subtitle="Número de deals por broker">
           {brokerData.length === 0 ? (
             <div className="flex items-center justify-center text-[12px]" style={{ height: 200, color: "var(--text-2)" }}>
               Nenhum deal originado via broker no momento.
