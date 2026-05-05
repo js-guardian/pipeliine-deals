@@ -129,6 +129,104 @@ def list_deals(_: dict = Depends(require_auth)):
     return [row_to_deal(dict(row)) for _, row in df.iterrows()]
 
 
+# ---------- PORTFOLIO ----------
+def row_to_portfolio_item(row: dict) -> dict:
+    row = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+    created_at = row.get("created_at")
+    return {
+        "id":         int(row["id"]),
+        "deal_id":    int(row["deal_id"]),
+        "perfil":     row.get("perfil"),
+        "imovel":     row.get("imovel"),
+        "aluguel":    _float(row.get("aluguel")),
+        "endereco":   row.get("endereco"),
+        "cidade":     row.get("cidade"),
+        "uf":         row.get("uf"),
+        "abl":        _float(row.get("abl")),
+        "created_at": created_at.isoformat() if created_at else None,
+    }
+
+
+class PortfolioItemPayload(BaseModel):
+    perfil:   Optional[str]   = None
+    imovel:   Optional[str]   = None
+    aluguel:  Optional[float] = None
+    endereco: Optional[str]   = None
+    cidade:   Optional[str]   = None
+    uf:       Optional[str]   = None
+    abl:      Optional[float] = None
+
+
+@app.get("/api/deals/{deal_id}/portfolio")
+def list_portfolio(deal_id: int, _: dict = Depends(require_auth)):
+    df = read_table(
+        "SELECT * FROM portfolio WHERE deal_id = :deal_id ORDER BY created_at ASC",
+        {"deal_id": deal_id},
+    )
+    return [row_to_portfolio_item(dict(row)) for _, row in df.iterrows()]
+
+
+@app.post("/api/deals/{deal_id}/portfolio", status_code=201)
+def create_portfolio_item(deal_id: int, payload: PortfolioItemPayload, _: dict = Depends(require_auth)):
+    sql = text("""
+        INSERT INTO portfolio (deal_id, perfil, imovel, aluguel, endereco, cidade, uf, abl)
+        VALUES (:deal_id, :perfil, :imovel, :aluguel, :endereco, :cidade, :uf, :abl)
+        RETURNING id
+    """)
+    with get_engine().begin() as conn:
+        new_id = conn.execute(sql, {
+            "deal_id":  deal_id,
+            "perfil":   payload.perfil,
+            "imovel":   payload.imovel,
+            "aluguel":  payload.aluguel,
+            "endereco": payload.endereco,
+            "cidade":   payload.cidade,
+            "uf":       payload.uf,
+            "abl":      payload.abl,
+        }).scalar_one()
+    df = read_table("SELECT * FROM portfolio WHERE id = :id", {"id": new_id})
+    return row_to_portfolio_item(dict(df.iloc[0]))
+
+
+@app.put("/api/portfolio/{item_id}")
+def update_portfolio_item(item_id: int, payload: PortfolioItemPayload, _: dict = Depends(require_auth)):
+    sql = text("""
+        UPDATE portfolio SET
+            perfil   = :perfil,
+            imovel   = :imovel,
+            aluguel  = :aluguel,
+            endereco = :endereco,
+            cidade   = :cidade,
+            uf       = :uf,
+            abl      = :abl
+        WHERE id = :id
+    """)
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {
+            "id":       item_id,
+            "perfil":   payload.perfil,
+            "imovel":   payload.imovel,
+            "aluguel":  payload.aluguel,
+            "endereco": payload.endereco,
+            "cidade":   payload.cidade,
+            "uf":       payload.uf,
+            "abl":      payload.abl,
+        })
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Portfolio item not found")
+    df = read_table("SELECT * FROM portfolio WHERE id = :id", {"id": item_id})
+    return row_to_portfolio_item(dict(df.iloc[0]))
+
+
+@app.delete("/api/portfolio/{item_id}", status_code=204)
+def delete_portfolio_item(item_id: int, _: dict = Depends(require_auth)):
+    sql = text("DELETE FROM portfolio WHERE id = :id")
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {"id": item_id})
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Portfolio item not found")
+
+
 class DealPayload(BaseModel):
     produto: Optional[str] = None
     status: Optional[str] = None

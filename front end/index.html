@@ -1087,6 +1087,217 @@ function FilesTab({ dealId }) {
   );
 }
 
+// ---------- PORTFOLIO TAB ----------
+const TIPOLOGIA_OPTS = Object.keys(TIPOLOGIA_COLORS).filter(k => k !== "OUTROS");
+
+function PortfolioTab({ deal, authFetch }) {
+  const [items, setItems]     = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);   // null | "new" | item object
+  const [form, setForm]       = useState({});
+  const [saving, setSaving]   = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    const res = await authFetch(`/api/deals/${deal.id}/portfolio`);
+    const data = await res.json();
+    setItems(Array.isArray(data) ? data : []);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [deal.id]);
+
+  const openNew = () => {
+    setForm({ perfil: "", imovel: "", aluguel: "", endereco: "", cidade: "", uf: "" , abl: "" });
+    setEditing("new");
+  };
+
+  const openEdit = (item) => {
+    setForm({ ...item, aluguel: item.aluguel ?? "", abl: item.abl ?? "" });
+    setEditing(item);
+  };
+
+  const cancel = () => { setEditing(null); setForm({}); };
+
+  const save = async () => {
+    setSaving(true);
+    const payload = {
+      perfil:   form.perfil   || null,
+      imovel:   form.imovel   || null,
+      aluguel:  form.aluguel  !== "" ? Number(form.aluguel)  : null,
+      endereco: form.endereco || null,
+      cidade:   form.cidade   || null,
+      uf:       form.uf       || null,
+      abl:      form.abl      !== "" ? Number(form.abl)      : null,
+    };
+    if (editing === "new") {
+      await authFetch(`/api/deals/${deal.id}/portfolio`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+    } else {
+      await authFetch(`/api/portfolio/${editing.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+    }
+    setSaving(false);
+    cancel();
+    load();
+  };
+
+  const remove = async (item) => {
+    if (!confirm(`Remover "${item.imovel || "este imóvel"}"?`)) return;
+    await authFetch(`/api/portfolio/${item.id}`, { method: "DELETE" });
+    load();
+  };
+
+  const totalAluguel = items.reduce((s, i) => s + (i.aluguel || 0), 0);
+  const totalAbl     = items.reduce((s, i) => s + (i.abl     || 0), 0);
+
+  const UF_OPTS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+
+  if (loading) return <div className="text-[12px] py-4" style={{ color: "var(--text-2)" }}>Carregando portfólio…</div>;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Summary */}
+      {items.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="p-3 rounded-lg text-center" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+            <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-2)" }}>Imóveis</div>
+            <div className="mono font-semibold" style={{ fontSize: 18 }}>{items.length}</div>
+          </div>
+          <div className="p-3 rounded-lg text-center" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+            <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-2)" }}>Aluguel Total</div>
+            <div className="mono font-semibold text-[12px]">{fmtBRL(totalAluguel)}</div>
+          </div>
+          <div className="p-3 rounded-lg text-center" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+            <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-2)" }}>ABL Total</div>
+            <div className="mono font-semibold text-[12px]">{fmtArea(totalAbl)}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Reusable inline form */}
+      {(() => {
+        const InlineForm = ({ label }) => (
+          <div className="rounded-lg p-4 flex flex-col gap-3" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
+            <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>{label}</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="gp-label">Nome do Imóvel</label>
+                <input className="gp-input" value={form.imovel || ""} onChange={e => setForm(f => ({...f, imovel: e.target.value}))} placeholder="Ex.: Galpão Cajamar A" />
+              </div>
+              <div>
+                <label className="gp-label">Tipologia</label>
+                <select className="gp-select" value={form.perfil || ""} onChange={e => setForm(f => ({...f, perfil: e.target.value}))}>
+                  <option value="">Selecione…</option>
+                  {TIPOLOGIA_OPTS.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="gp-label">Aluguel Mensal</label>
+                <CurrencyInput value={form.aluguel ?? ""} onChange={v => setForm(f => ({...f, aluguel: v}))} placeholder="0" />
+              </div>
+              <div>
+                <label className="gp-label">Cidade</label>
+                <input className="gp-input" value={form.cidade || ""} onChange={e => setForm(f => ({...f, cidade: e.target.value}))} placeholder="Ex.: São Paulo" />
+              </div>
+              <div>
+                <label className="gp-label">UF</label>
+                <select className="gp-select" value={form.uf || ""} onChange={e => setForm(f => ({...f, uf: e.target.value}))}>
+                  <option value="">UF</option>
+                  {UF_OPTS.map(u => <option key={u}>{u}</option>)}
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="gp-label">Endereço</label>
+                <input className="gp-input" value={form.endereco || ""} onChange={e => setForm(f => ({...f, endereco: e.target.value}))} placeholder="Rua, número" />
+              </div>
+              <div className="col-span-2">
+                <label className="gp-label">ABL (m²)</label>
+                <CurrencyInput value={form.abl ?? ""} onChange={v => setForm(f => ({...f, abl: v}))} placeholder="0" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 justify-end mt-1">
+              <button onClick={cancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
+              <button onClick={save} disabled={saving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#3B5279", color: "#fff" }}>
+                {saving ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
+          </div>
+        );
+
+        return (
+          <div className="flex flex-col gap-2">
+            {items.map(item => (
+              <React.Fragment key={item.id}>
+                <div className="rounded-lg p-3" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-[13px] truncate">{item.imovel || "—"}</span>
+                        {item.perfil && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                            style={{ background: `${TIPOLOGIA_COLORS[item.perfil] || "#8592AA"}18`, color: TIPOLOGIA_COLORS[item.perfil] || "#8592AA", border: `1px solid ${TIPOLOGIA_COLORS[item.perfil] || "#8592AA"}30` }}>
+                            {item.perfil}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] mt-1" style={{ color: "var(--text-2)" }}>
+                        {[item.cidade, item.uf].filter(Boolean).join(" / ")}
+                        {item.endereco && <span> · {item.endereco}</span>}
+                      </div>
+                      <div className="flex items-center gap-3 mt-2 flex-wrap">
+                        {item.aluguel != null && (
+                          <span className="mono text-[11px]" style={{ color: "var(--text)" }}>{fmtBRL(item.aluguel)}<span style={{ color: "var(--text-2)" }}>/mês</span></span>
+                        )}
+                        {item.abl != null && (
+                          <span className="mono text-[11px]" style={{ color: "var(--text-2)" }}>{fmtArea(item.abl)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => editing && editing.id === item.id ? cancel() : openEdit(item)}
+                        className="p-1.5 rounded hover:bg-[var(--border)]"
+                        style={{ color: editing && editing.id === item.id ? "#DC2626" : "#3B5279" }} title="Editar">
+                        <IconEdit size={13}/>
+                      </button>
+                      <button onClick={() => remove(item)} className="p-1.5 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }} title="Remover">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {editing && editing !== "new" && editing.id === item.id && (
+                  <InlineForm label="Editar Imóvel" />
+                )}
+              </React.Fragment>
+            ))}
+
+            {items.length === 0 && editing !== "new" && (
+              <div className="text-[12px] py-3 px-3 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
+                Nenhum imóvel cadastrado neste portfólio.
+              </div>
+            )}
+
+            {editing === "new" && <InlineForm label="Novo Imóvel" />}
+          </div>
+        );
+      })()}
+
+      {/* Add button */}
+      {!editing && (
+        <button onClick={openNew} className="flex items-center gap-1.5 text-[12px] px-3 py-2 rounded font-medium self-start"
+          style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
+          <IconPlus size={13}/> Adicionar Imóvel
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---------- DRAWER ----------
 function StatusEditor({ status, onChange }) {
   const [open, setOpen] = useState(false);
@@ -1127,8 +1338,9 @@ function Field({ label, children }) {
   );
 }
 
-function Drawer({ deal, onClose, onChange, onEdit, onSave }) {
+function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
   const [tab, setTab] = useState("ident");
+  const isPortfolio = deal.perfil_ativo === "PORTFOLIO";
   if (!deal) return null;
 
   const updateField = (key, val) => {
@@ -1161,7 +1373,14 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave }) {
 
         {/* tabs */}
         <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
-          {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["hist","Histórico"],["docs","Arquivos"]].map(([k,l]) => (
+          {[
+            ["ident","Identificação"],
+            ["fin","Financeiro"],
+            ["contra","Contraparte"],
+            ["hist","Histórico"],
+            ...(isPortfolio ? [["port","Portfólio"]] : []),
+            ["docs","Arquivos"],
+          ].map(([k,l]) => (
             <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)}
               style={{ padding: "8px 10px", fontSize: 11 }}>{l}</div>
           ))}
@@ -1243,6 +1462,8 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave }) {
               </div>
             </>
           )}
+
+          {tab === "port" && isPortfolio && <PortfolioTab deal={deal} authFetch={authFetch} />}
 
           {tab === "docs" && <FilesTab dealId={deal.id} />}
         </div>
@@ -1798,6 +2019,7 @@ function App({ session }) {
           onChange={handleDealChange}
           onEdit={(d) => openModal(d)}
           onSave={handleDrawerSave}
+          authFetch={authFetch}
         />
       )}
 
