@@ -808,13 +808,13 @@ function ExportButton({ rows }) {
 
 function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
   const [q, setQ] = useState("");
-  const [fStatus, setFStatus] = useState("");
-  const [fResp, setFResp] = useState("");
-  const [fPerfil, setFPerfil] = useState("");
-  const [fCidade, setFCidade] = useState("");
-  const [fUF, setFUF] = useState("");
-  const [fBroker, setFBroker] = useState("");
-  const [fMes, setFMes] = useState("");
+  const [fStatus, setFStatus] = useState([]);
+  const [fResp, setFResp] = useState([]);
+  const [fPerfil, setFPerfil] = useState([]);
+  const [fCidade, setFCidade] = useState([]);
+  const [fUF, setFUF] = useState([]);
+  const [fBroker, setFBroker] = useState([]);
+  const [fMes, setFMes] = useState([]);
 
   const cidadeOpts = useMemo(() => [...new Set(deals.map(d => d.cidade).filter(Boolean))].sort(), [deals]);
   const brokerOpts = useMemo(() => [...new Set(deals.map(d => d.nome_broker).filter(Boolean))].sort(), [deals]);
@@ -831,13 +831,13 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
           const s = q.toLowerCase();
           if (!((d.produto||"").toLowerCase().includes(s) || (d.endereco||"").toLowerCase().includes(s))) return false;
         }
-        if (fStatus && d.status !== fStatus) return false;
-        if (fResp && d.responsavel !== fResp) return false;
-        if (fPerfil && d.perfil_ativo !== fPerfil) return false;
-        if (fCidade && d.cidade !== fCidade) return false;
-        if (fUF && d.uf !== fUF) return false;
-        if (fBroker && d.nome_broker !== fBroker) return false;
-        if (fMes && (!d.created_at || d.created_at.slice(0, 7) !== fMes)) return false;
+        if (fStatus.length > 0 && !fStatus.includes(d.status)) return false;
+        if (fResp.length > 0 && !fResp.includes(d.responsavel)) return false;
+        if (fPerfil.length > 0 && !fPerfil.includes(d.perfil_ativo)) return false;
+        if (fCidade.length > 0 && !fCidade.includes(d.cidade)) return false;
+        if (fUF.length > 0 && !fUF.includes(d.uf)) return false;
+        if (fBroker.length > 0 && !fBroker.includes(d.nome_broker)) return false;
+        if (fMes.length > 0 && (!d.created_at || !fMes.includes(d.created_at.slice(0, 7)))) return false;
         return true;
       })
       .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
@@ -875,40 +875,16 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
             placeholder="Buscar por produto ou endereço…"
           />
         </div>
-        <select className="gp-select" style={{ width: 170 }} value={fStatus} onChange={e => setFStatus(e.target.value)}>
-          <option value="">Status — Todos</option>
-          {STATUS_ORDER.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="gp-select" style={{ width: 150 }} value={fResp} onChange={e => setFResp(e.target.value)}>
-          <option value="">Responsável — Todos</option>
-          {RESP_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="gp-select" style={{ width: 150 }} value={fPerfil} onChange={e => setFPerfil(e.target.value)}>
-          <option value="">Perfil — Todos</option>
-          {PERFIL_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="gp-select" style={{ width: 150 }} value={fCidade} onChange={e => setFCidade(e.target.value)}>
-          <option value="">Cidade — Todas</option>
-          {cidadeOpts.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="gp-select" style={{ width: 100 }} value={fUF} onChange={e => setFUF(e.target.value)}>
-          <option value="">UF — Todas</option>
-          {ufOpts.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="gp-select" style={{ width: 150 }} value={fBroker} onChange={e => setFBroker(e.target.value)}>
-          <option value="">Broker — Todos</option>
-          {brokerOpts.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select className="gp-select" style={{ width: 120 }} value={fMes} onChange={e => setFMes(e.target.value)}>
-          <option value="">Mês — Todos</option>
-          {mesOpts.map(ym => {
-            const [y, m] = ym.split("-");
-            return <option key={ym} value={ym}>{MONTH_NAMES_PT[+m-1]}/{y}</option>;
-          })}
-        </select>
-        {(q || fStatus || fResp || fPerfil || fCidade || fUF || fBroker || fMes) && (
+        <MultiSelect options={STATUS_ORDER.map(s => ({ value: s, label: STATUS_SHORT[s] || s }))} values={fStatus} onChange={setFStatus} placeholder="Status — Todos" width={170} />
+        <MultiSelect options={RESP_OPTS.map(s => ({ value: s, label: s }))} values={fResp} onChange={setFResp} placeholder="Responsável — Todos" width={160} />
+        <MultiSelect options={PERFIL_OPTS.map(s => ({ value: s, label: s }))} values={fPerfil} onChange={setFPerfil} placeholder="Perfil — Todos" width={150} />
+        <MultiSelect options={cidadeOpts.map(s => ({ value: s, label: s }))} values={fCidade} onChange={setFCidade} placeholder="Cidade — Todas" width={150} />
+        <MultiSelect options={ufOpts.map(s => ({ value: s, label: s }))} values={fUF} onChange={setFUF} placeholder="UF — Todas" width={110} />
+        <MultiSelect options={brokerOpts.map(s => ({ value: s, label: s }))} values={fBroker} onChange={setFBroker} placeholder="Broker — Todos" width={150} />
+        <MultiSelect options={mesOpts.map(ym => { const [y,m]=ym.split("-"); return { value: ym, label: `${MONTH_NAMES_PT[+m-1]}/${y}` }; })} values={fMes} onChange={setFMes} placeholder="Mês — Todos" width={120} />
+        {(q || fStatus.length > 0 || fResp.length > 0 || fPerfil.length > 0 || fCidade.length > 0 || fUF.length > 0 || fBroker.length > 0 || fMes.length > 0) && (
           <button
-            onClick={() => { setQ(""); setFStatus(""); setFResp(""); setFPerfil(""); setFCidade(""); setFUF(""); setFBroker(""); setFMes(""); }}
+            onClick={() => { setQ(""); setFStatus([]); setFResp([]); setFPerfil([]); setFCidade([]); setFUF([]); setFBroker([]); setFMes([]); }}
             className="text-[11px] px-2 py-1.5 rounded" style={{ color: "var(--text-2)" }}>
             Limpar
           </button>
