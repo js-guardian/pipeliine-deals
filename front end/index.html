@@ -1307,97 +1307,44 @@ function HistoricoNegTab({ deal, authFetch }) {
           return (
             <React.Fragment key={item.id}>
               <div className="relative flex gap-3">
-                {/* timeline dot + line */}
                 <div className="flex flex-col items-center" style={{ width: 18, flexShrink: 0 }}>
                   <div className="w-2.5 h-2.5 rounded-full mt-1.5" style={{ background: colors.text, flexShrink: 0 }} />
                   {(!isLast || (editing === "new" && isThisLado)) && <div className="flex-1 w-px mt-1" style={{ background: "var(--border-2)", minHeight: 12 }} />}
                 </div>
-
-                {/* proposta + contraproposta lado a lado */}
-                <div className="flex-1 flex gap-2 items-start min-w-0">
-                  {/* proposta card */}
-                  <div className="flex-1 min-w-0 rounded-lg p-3 mb-1" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {item.tipo && (
-                          <span className="text-[10px] px-2 py-0.5 rounded font-semibold tracking-wide"
-                            style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
-                            {item.tipo}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.created_at)}</span>
-                        <button onClick={() => isEditing ? cancel() : openEdit(item)}
-                          className="p-1 rounded hover:bg-[var(--border)]"
-                          style={{ color: isEditing ? "#DC2626" : "#3B5279" }} title="Editar">
-                          <IconEdit size={12}/>
-                        </button>
-                        <button onClick={() => remove(item)} className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }} title="Excluir">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
-                          </svg>
-                        </button>
-                      </div>
+                <div className="flex-1 rounded-lg p-3 mb-1" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {item.tipo && (
+                        <span className="text-[10px] px-2 py-0.5 rounded font-semibold tracking-wide"
+                          style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
+                          {item.tipo}
+                        </span>
+                      )}
                     </div>
-                    {(item.valor_aquisicao != null || item.cap != null || item.modo_pgto || item.entrada_pct != null) && (
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-2 pb-2" style={{ borderBottom: "1px solid var(--border)" }}>
-                        {item.valor_aquisicao != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Valor Aquisição</div><div className="mono text-[12px] font-semibold">{fmtBRL(item.valor_aquisicao)}</div></div>}
-                        {item.cap != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Cap Rate</div><div className="mono text-[12px] font-semibold">{fmtPct(item.cap)}</div></div>}
-                        {item.modo_pgto && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Modo Pgto</div><div className="text-[12px]">{item.modo_pgto}</div></div>}
-                        {item.entrada_pct != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Entrada</div><div className="mono text-[12px]">{fmtPct(item.entrada_pct)}</div></div>}
-                      </div>
-                    )}
-                    {item.parcelamento && <div className="mb-1.5"><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Parcelamento</div><div className="text-[12px]" style={{ whiteSpace: "pre-line" }}>{item.parcelamento}</div></div>}
-                    {item.notas && <div className="text-[11px] pt-1.5" style={{ color: "var(--text-2)", borderTop: item.parcelamento ? "1px solid var(--border)" : "none" }}>{item.notas}</div>}
-                  </div>
-
-                  {/* coluna de contrapropostas — à direita da proposta */}
-                  <div className="flex flex-col gap-1.5 mb-1" style={{ width: "46%", flexShrink: 0 }}>
-                    {(contraMap[item.id] || []).map(c => {
-                      const isEditingC = cEditing && cEditing.item !== "new" && cEditing.item?.id === c.id;
-                      return (
-                        <React.Fragment key={c.id}>
-                          <div className="rounded-lg p-2.5" style={{ background: "rgba(47,201,255,0.05)", border: "1px solid rgba(47,201,255,0.2)" }}>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#1A9FC0" }}>Contraproposta</span>
-                              <div className="flex items-center gap-1">
-                                <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(c.created_at)}</span>
-                                <button onClick={() => isEditingC ? cCancel() : cOpenEdit(item.id, c)}
-                                  className="p-1 rounded hover:bg-[var(--border)]"
-                                  style={{ color: isEditingC ? "#DC2626" : "#1A9FC0" }}>
-                                  <IconEdit size={11}/>
-                                </button>
-                                <button onClick={() => cRemove(c)} className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }}>
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
-                                  </svg>
-                                </button>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                              {c.valor_contraproposta != null && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Valor</div><div className="mono text-[11px] font-semibold">{fmtBRL(c.valor_contraproposta)}</div></div>}
-                              {c.cap_contraproposta   != null && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Cap</div><div className="mono text-[11px] font-semibold">{fmtPct(c.cap_contraproposta)}</div></div>}
-                              {c.modo_pgto_contraproposta     && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Pgto</div><div className="text-[11px]">{c.modo_pgto_contraproposta}</div></div>}
-                              {c.entrada_percentual_contraproposta != null && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Entrada</div><div className="mono text-[11px]">{fmtPct(c.entrada_percentual_contraproposta)}</div></div>}
-                            </div>
-                            {c.parcelamento_contraproposta && <div className="text-[11px] mt-1" style={{ color: "var(--text-2)", whiteSpace: "pre-line" }}>{c.parcelamento_contraproposta}</div>}
-                            {c.notas_contraproposta        && <div className="text-[11px] mt-1 italic" style={{ color: "var(--text-2)" }}>{c.notas_contraproposta}</div>}
-                          </div>
-                          {isEditingC && <ContraForm offerId={item.id} />}
-                        </React.Fragment>
-                      );
-                    })}
-                    {/* botão nova contraproposta */}
-                    {!cEditing && !isEditing && (
-                      <button onClick={() => cOpenNew(item.id)}
-                        className="flex items-center gap-1 text-[11px] px-2 py-1.5 rounded self-start"
-                        style={{ background: "rgba(47,201,255,0.08)", color: "#1A9FC0", border: "1px solid rgba(47,201,255,0.25)" }}>
-                        <IconPlus size={11}/> Contraproposta
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.created_at)}</span>
+                      <button onClick={() => isEditing ? cancel() : openEdit(item)}
+                        className="p-1 rounded hover:bg-[var(--border)]"
+                        style={{ color: isEditing ? "#DC2626" : "#3B5279" }} title="Editar">
+                        <IconEdit size={12}/>
                       </button>
-                    )}
-                    {cEditing?.item === "new" && cEditing?.offerId === item.id && <ContraForm offerId={item.id} />}
+                      <button onClick={() => remove(item)} className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }} title="Excluir">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
+                  {(item.valor_aquisicao != null || item.cap != null || item.modo_pgto || item.entrada_pct != null) && (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-2 pb-2" style={{ borderBottom: "1px solid var(--border)" }}>
+                      {item.valor_aquisicao != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Valor Aquisição</div><div className="mono text-[12px] font-semibold">{fmtBRL(item.valor_aquisicao)}</div></div>}
+                      {item.cap != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Cap Rate</div><div className="mono text-[12px] font-semibold">{fmtPct(item.cap)}</div></div>}
+                      {item.modo_pgto && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Modo Pgto</div><div className="text-[12px]">{item.modo_pgto}</div></div>}
+                      {item.entrada_pct != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Entrada</div><div className="mono text-[12px]">{fmtPct(item.entrada_pct)}</div></div>}
+                    </div>
+                  )}
+                  {item.parcelamento && <div className="mb-1.5"><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Parcelamento</div><div className="text-[12px]" style={{ whiteSpace: "pre-line" }}>{item.parcelamento}</div></div>}
+                  {item.notas && <div className="text-[11px] pt-1.5" style={{ color: "var(--text-2)", borderTop: item.parcelamento ? "1px solid var(--border)" : "none" }}>{item.notas}</div>}
                 </div>
               </div>
               {isEditing && <InlineForm label="Editar Registro" />}
@@ -1421,21 +1368,152 @@ function HistoricoNegTab({ deal, authFetch }) {
   const contraparteItems = items.filter(i => i.lado === "CONTRAPARTE");
 
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
-      <div className="flex flex-col gap-3 min-w-0">
+    <div className="flex flex-col gap-3">
+      {/* CABEÇALHO 2 colunas */}
+      <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="flex items-center gap-2 pb-2" style={{ borderBottom: "2px solid #3B5279" }}>
           <div className="w-2 h-2 rounded-full" style={{ background: "#3B5279" }} />
           <span className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>Proposta Guardian</span>
         </div>
-        <ItemTimeline colItems={guardianItems} lado="GUARDIAN" />
-      </div>
-      <div className="flex flex-col gap-3 min-w-0" style={{ borderLeft: "1px solid var(--border)", paddingLeft: 16 }}>
-        <div className="flex items-center gap-2 pb-2" style={{ borderBottom: "2px solid #4E95D9" }}>
-          <div className="w-2 h-2 rounded-full" style={{ background: "#4E95D9" }} />
-          <span className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "#4E95D9" }}>Proposta Contraparte</span>
+        <div className="flex items-center gap-2 pb-2" style={{ borderBottom: "2px solid #1A9FC0", borderLeft: "1px solid var(--border)", paddingLeft: 12 }}>
+          <div className="w-2 h-2 rounded-full" style={{ background: "#1A9FC0" }} />
+          <span className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "#1A9FC0" }}>Contraproposta</span>
         </div>
-        <ItemTimeline colItems={contraparteItems} lado="CONTRAPARTE" />
       </div>
+
+      {/* Uma linha por item Guardian: [proposta] | [contrapropostas] */}
+      {guardianItems.length === 0 && editing !== "new" && (
+        <div className="text-[12px] py-3 px-3 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
+          Nenhum registro encontrado.
+        </div>
+      )}
+      {guardianItems.map((item, idx) => {
+        const colors    = HIST_TIPO_COLORS[item.tipo] || HIST_TIPO_COLORS["OUTRO"];
+        const isLast    = idx === guardianItems.length - 1;
+        const isEditing = editing && editing !== "new" && editing.id === item.id;
+        const itemContras = contraMap[item.id] || [];
+        return (
+          <React.Fragment key={item.id}>
+            <div className="grid gap-4 items-start" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {/* ESQUERDA: proposta Guardian */}
+              <div className="flex gap-3">
+                <div className="flex flex-col items-center" style={{ width: 18, flexShrink: 0 }}>
+                  <div className="w-2.5 h-2.5 rounded-full mt-1.5" style={{ background: colors.text, flexShrink: 0 }} />
+                  {!isLast && <div className="flex-1 w-px mt-1" style={{ background: "var(--border-2)", minHeight: 12 }} />}
+                </div>
+                <div className="flex-1 rounded-lg p-3 mb-1" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {item.tipo && (
+                        <span className="text-[10px] px-2 py-0.5 rounded font-semibold tracking-wide"
+                          style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
+                          {item.tipo}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.created_at)}</span>
+                      <button onClick={() => isEditing ? cancel() : openEdit(item)}
+                        className="p-1 rounded hover:bg-[var(--border)]"
+                        style={{ color: isEditing ? "#DC2626" : "#3B5279" }} title="Editar">
+                        <IconEdit size={12}/>
+                      </button>
+                      <button onClick={() => remove(item)} className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }} title="Excluir">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  {(item.valor_aquisicao != null || item.cap != null || item.modo_pgto || item.entrada_pct != null) && (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-2 pb-2" style={{ borderBottom: "1px solid var(--border)" }}>
+                      {item.valor_aquisicao != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Valor Aquisição</div><div className="mono text-[12px] font-semibold">{fmtBRL(item.valor_aquisicao)}</div></div>}
+                      {item.cap != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Cap Rate</div><div className="mono text-[12px] font-semibold">{fmtPct(item.cap)}</div></div>}
+                      {item.modo_pgto && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Modo Pgto</div><div className="text-[12px]">{item.modo_pgto}</div></div>}
+                      {item.entrada_pct != null && <div><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Entrada</div><div className="mono text-[12px]">{fmtPct(item.entrada_pct)}</div></div>}
+                    </div>
+                  )}
+                  {item.parcelamento && <div className="mb-1.5"><div className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--text-2)" }}>Parcelamento</div><div className="text-[12px]" style={{ whiteSpace: "pre-line" }}>{item.parcelamento}</div></div>}
+                  {item.notas && <div className="text-[11px] pt-1.5" style={{ color: "var(--text-2)", borderTop: item.parcelamento ? "1px solid var(--border)" : "none" }}>{item.notas}</div>}
+                </div>
+              </div>
+
+              {/* DIREITA: contrapropostas desta proposta */}
+              <div className="flex flex-col gap-2 pt-0.5" style={{ borderLeft: "1px solid var(--border)", paddingLeft: 12 }}>
+                {itemContras.map(c => {
+                  const isEditingC = cEditing && cEditing.item !== "new" && cEditing.item?.id === c.id;
+                  return (
+                    <React.Fragment key={c.id}>
+                      <div className="rounded-lg p-2.5" style={{ background: "rgba(47,201,255,0.05)", border: "1px solid rgba(47,201,255,0.2)" }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#1A9FC0" }}>Contraproposta</span>
+                          <div className="flex items-center gap-1">
+                            <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(c.created_at)}</span>
+                            <button onClick={() => isEditingC ? cCancel() : cOpenEdit(item.id, c)}
+                              className="p-1 rounded hover:bg-[var(--border)]"
+                              style={{ color: isEditingC ? "#DC2626" : "#1A9FC0" }}>
+                              <IconEdit size={11}/>
+                            </button>
+                            <button onClick={() => cRemove(c)} className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                          {c.valor_contraproposta != null && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Valor</div><div className="mono text-[11px] font-semibold">{fmtBRL(c.valor_contraproposta)}</div></div>}
+                          {c.cap_contraproposta   != null && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Cap</div><div className="mono text-[11px] font-semibold">{fmtPct(c.cap_contraproposta)}</div></div>}
+                          {c.modo_pgto_contraproposta     && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Pgto</div><div className="text-[11px]">{c.modo_pgto_contraproposta}</div></div>}
+                          {c.entrada_percentual_contraproposta != null && <div><div className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Entrada</div><div className="mono text-[11px]">{fmtPct(c.entrada_percentual_contraproposta)}</div></div>}
+                        </div>
+                        {c.parcelamento_contraproposta && <div className="text-[11px] mt-1" style={{ color: "var(--text-2)", whiteSpace: "pre-line" }}>{c.parcelamento_contraproposta}</div>}
+                        {c.notas_contraproposta        && <div className="text-[11px] mt-1 italic" style={{ color: "var(--text-2)" }}>{c.notas_contraproposta}</div>}
+                      </div>
+                      {isEditingC && <ContraForm offerId={item.id} />}
+                    </React.Fragment>
+                  );
+                })}
+                {!cEditing && !isEditing && (
+                  <button onClick={() => cOpenNew(item.id)}
+                    className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded self-start"
+                    style={{ background: "rgba(47,201,255,0.08)", color: "#1A9FC0", border: "1px solid rgba(47,201,255,0.25)" }}>
+                    <IconPlus size={11}/> Contraproposta
+                  </button>
+                )}
+                {cEditing?.item === "new" && cEditing?.offerId === item.id && <ContraForm offerId={item.id} />}
+              </div>
+            </div>
+            {isEditing && <InlineForm label="Editar Registro" />}
+          </React.Fragment>
+        );
+      })}
+
+      {/* Form novo registro Guardian */}
+      {editing === "new" && currentLado === "GUARDIAN" && <InlineForm label="Novo Registro" />}
+      {!editing && (
+        <button onClick={() => openNew("GUARDIAN")} className="flex items-center gap-1.5 text-[12px] px-3 py-2 rounded font-medium self-start mt-1"
+          style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
+          <IconPlus size={13}/> Adicionar Registro
+        </button>
+      )}
+
+      {/* PROPOSTA CONTRAPARTE — seção abaixo */}
+      {(contraparteItems.length > 0 || (editing === "new" && currentLado === "CONTRAPARTE")) && (
+        <div className="flex flex-col gap-3 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2 pb-2" style={{ borderBottom: "2px solid #4E95D9" }}>
+            <div className="w-2 h-2 rounded-full" style={{ background: "#4E95D9" }} />
+            <span className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "#4E95D9" }}>Proposta Contraparte</span>
+          </div>
+          <ItemTimeline colItems={contraparteItems} lado="CONTRAPARTE" />
+        </div>
+      )}
+      {!editing && (
+        <button onClick={() => openNew("CONTRAPARTE")} className="flex items-center gap-1.5 text-[12px] px-3 py-2 rounded font-medium self-start"
+          style={{ background: "#EEF1F6", color: "#4E95D9", border: "1px solid #C7D9F0" }}>
+          <IconPlus size={13}/> Proposta Contraparte
+        </button>
+      )}
     </div>
   );
 }
