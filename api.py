@@ -165,6 +165,7 @@ def row_to_historico(row: dict) -> dict:
         "id":              int(row["id"]),
         "deal_id":         int(row["deal_id"]) if row.get("deal_id") else None,
         "created_at":      created_at.isoformat() if created_at else None,
+        "lado":            row.get("lado") or "GUARDIAN",
         "tipo":            row.get("tipo"),
         "valor_aquisicao": _float(row.get("valor_aquisicao")),
         "cap":             _float(row.get("cap")),
@@ -185,6 +186,7 @@ def list_historico(deal_id: int, _: dict = Depends(require_auth)):
 
 
 class HistoricoPayload(BaseModel):
+    lado:            Optional[str]   = "GUARDIAN"
     tipo:            Optional[str]   = None
     valor_aquisicao: Optional[float] = None
     cap:             Optional[float] = None
@@ -198,14 +200,14 @@ class HistoricoPayload(BaseModel):
 def create_historico(deal_id: int, payload: HistoricoPayload, _: dict = Depends(require_auth)):
     sql = text("""
         INSERT INTO historico_negociacoes
-            (deal_id, tipo, valor_aquisicao, cap, modo_pgto, entrada_pct, parcelamento, notas)
+            (deal_id, lado, tipo, valor_aquisicao, cap, modo_pgto, entrada_pct, parcelamento, notas)
         VALUES
-            (:deal_id, :tipo, :valor_aquisicao, :cap, :modo_pgto, :entrada_pct, :parcelamento, :notas)
+            (:deal_id, :lado, :tipo, :valor_aquisicao, :cap, :modo_pgto, :entrada_pct, :parcelamento, :notas)
         RETURNING id
     """)
     with get_engine().begin() as conn:
         new_id = conn.execute(sql, {
-            "deal_id": deal_id, "tipo": payload.tipo,
+            "deal_id": deal_id, "lado": payload.lado or "GUARDIAN", "tipo": payload.tipo,
             "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
             "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
             "parcelamento": payload.parcelamento, "notas": payload.notas,
@@ -218,6 +220,7 @@ def create_historico(deal_id: int, payload: HistoricoPayload, _: dict = Depends(
 def update_historico(item_id: int, payload: HistoricoPayload, _: dict = Depends(require_auth)):
     sql = text("""
         UPDATE historico_negociacoes SET
+            lado            = :lado,
             tipo            = :tipo,
             valor_aquisicao = :valor_aquisicao,
             cap             = :cap,
@@ -229,7 +232,7 @@ def update_historico(item_id: int, payload: HistoricoPayload, _: dict = Depends(
     """)
     with get_engine().begin() as conn:
         result = conn.execute(sql, {
-            "id": item_id, "tipo": payload.tipo,
+            "id": item_id, "lado": payload.lado or "GUARDIAN", "tipo": payload.tipo,
             "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
             "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
             "parcelamento": payload.parcelamento, "notas": payload.notas,
