@@ -252,6 +252,97 @@ def delete_historico(item_id: int, _: dict = Depends(require_auth)):
         raise HTTPException(status_code=404, detail="Histórico item not found")
 
 
+# ---------- CONTRAPROPOSTAS ----------
+def row_to_contraproposta(row: dict) -> dict:
+    row = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+    created_at = row.get("created_at")
+    return {
+        "id":                                int(row["id"]),
+        "offer_id":                          int(row["offer_id"]) if row.get("offer_id") else None,
+        "created_at":                        created_at.isoformat() if created_at else None,
+        "valor_contraproposta":              _float(row.get("valor_contraproposta")),
+        "cap_contraproposta":                _float(row.get("cap_contraproposta")),
+        "modo_pgto_contraproposta":          row.get("modo_pgto_contraproposta"),
+        "entrada_percentual_contraproposta": _float(row.get("entrada_percentual_contraproposta")),
+        "parcelamento_contraproposta":       row.get("parcelamento_contraproposta"),
+        "notas_contraproposta":              row.get("notas_contraproposta"),
+    }
+
+
+@app.get("/api/deals/{deal_id}/contrapropostas")
+def list_contrapropostas_by_deal(deal_id: int, _: dict = Depends(require_auth)):
+    """Returns all contrapropostas for a deal, joined through historico_negociacoes."""
+    df = read_table("""
+        SELECT c.*
+        FROM historico_contrapropostas c
+        JOIN historico_negociacoes h ON h.id = c.offer_id
+        WHERE h.deal_id = :deal_id
+        ORDER BY c.created_at ASC
+    """, {"deal_id": deal_id})
+    return [row_to_contraproposta(dict(row)) for _, row in df.iterrows()]
+
+
+@app.post("/api/historico/{offer_id}/contrapropostas", status_code=201)
+def create_contraproposta(offer_id: int, payload: dict, _: dict = Depends(require_auth)):
+    sql = text("""
+        INSERT INTO historico_contrapropostas
+            (offer_id, valor_contraproposta, cap_contraproposta, modo_pgto_contraproposta,
+             entrada_percentual_contraproposta, parcelamento_contraproposta, notas_contraproposta)
+        VALUES
+            (:offer_id, :valor, :cap, :modo_pgto, :entrada_pct, :parcelamento, :notas)
+        RETURNING id
+    """)
+    with get_engine().begin() as conn:
+        new_id = conn.execute(sql, {
+            "offer_id":      offer_id,
+            "valor":         payload.get("valor_contraproposta"),
+            "cap":           payload.get("cap_contraproposta"),
+            "modo_pgto":     payload.get("modo_pgto_contraproposta"),
+            "entrada_pct":   payload.get("entrada_percentual_contraproposta"),
+            "parcelamento":  payload.get("parcelamento_contraproposta"),
+            "notas":         payload.get("notas_contraproposta"),
+        }).scalar_one()
+    df = read_table("SELECT * FROM historico_contrapropostas WHERE id = :id", {"id": new_id})
+    return row_to_contraproposta(dict(df.iloc[0]))
+
+
+@app.put("/api/contrapropostas/{item_id}")
+def update_contraproposta(item_id: int, payload: dict, _: dict = Depends(require_auth)):
+    sql = text("""
+        UPDATE historico_contrapropostas SET
+            valor_contraproposta              = :valor,
+            cap_contraproposta                = :cap,
+            modo_pgto_contraproposta          = :modo_pgto,
+            entrada_percentual_contraproposta = :entrada_pct,
+            parcelamento_contraproposta       = :parcelamento,
+            notas_contraproposta              = :notas
+        WHERE id = :id
+    """)
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {
+            "id":           item_id,
+            "valor":        payload.get("valor_contraproposta"),
+            "cap":          payload.get("cap_contraproposta"),
+            "modo_pgto":    payload.get("modo_pgto_contraproposta"),
+            "entrada_pct":  payload.get("entrada_percentual_contraproposta"),
+            "parcelamento": payload.get("parcelamento_contraproposta"),
+            "notas":        payload.get("notas_contraproposta"),
+        })
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Contraproposta not found")
+    df = read_table("SELECT * FROM historico_contrapropostas WHERE id = :id", {"id": item_id})
+    return row_to_contraproposta(dict(df.iloc[0]))
+
+
+@app.delete("/api/contrapropostas/{item_id}", status_code=204)
+def delete_contraproposta(item_id: int, _: dict = Depends(require_auth)):
+    sql = text("DELETE FROM historico_contrapropostas WHERE id = :id")
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {"id": item_id})
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Contraproposta not found")
+
+
 @app.get("/api/deals/{deal_id}/portfolio")
 def list_portfolio(deal_id: int, _: dict = Depends(require_auth)):
     df = read_table(

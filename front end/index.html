@@ -1075,21 +1075,35 @@ const HIST_TIPO_COLORS = {
 const HIST_TIPO_OPTS = Object.keys(HIST_TIPO_COLORS);
 const MODO_PGTO_OPTS = ["CASH","COTAS","CETIPADO","MISTO"];
 
-const EMPTY_HIST = { tipo: "", valor_aquisicao: "", cap: "", modo_pgto: "", entrada_pct: "", parcelamento: "", notas: "" };
+const EMPTY_HIST   = { tipo: "", valor_aquisicao: "", cap: "", modo_pgto: "", entrada_pct: "", parcelamento: "", notas: "" };
+const EMPTY_CONTRA = { valor_contraproposta: "", cap_contraproposta: "", modo_pgto_contraproposta: "", entrada_percentual_contraproposta: "", parcelamento_contraproposta: "", notas_contraproposta: "" };
 
 function HistoricoNegTab({ deal, authFetch }) {
-  const [items, setItems]         = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [editing, setEditing]     = useState(null);   // null | "new" | item
+  const [items, setItems]           = useState([]);
+  const [contraMap, setContraMap]   = useState({}); // { offer_id: [contrapropostas] }
+  const [loading, setLoading]       = useState(true);
+  const [editing, setEditing]       = useState(null);   // null | "new" | item
   const [currentLado, setCurrentLado] = useState("GUARDIAN");
-  const [form, setForm]           = useState({});
-  const [saving, setSaving]       = useState(false);
+  const [form, setForm]             = useState({});
+  const [saving, setSaving]         = useState(false);
+  const [cEditing, setCEditing]     = useState(null); // { offerId, item: "new"|obj }
+  const [cForm, setCForm]           = useState({});
+  const [cSaving, setCSaving]       = useState(false);
 
   const load = () => {
-    authFetch(`/api/deals/${deal.id}/historico`)
-      .then(r => r.json())
-      .then(data => { setItems(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => setLoading(false));
+    Promise.all([
+      authFetch(`/api/deals/${deal.id}/historico`).then(r => r.json()),
+      authFetch(`/api/deals/${deal.id}/contrapropostas`).then(r => r.json()),
+    ]).then(([hist, contra]) => {
+      setItems(Array.isArray(hist) ? hist : []);
+      const map = {};
+      (Array.isArray(contra) ? contra : []).forEach(c => {
+        if (!map[c.offer_id]) map[c.offer_id] = [];
+        map[c.offer_id].push(c);
+      });
+      setContraMap(map);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [deal.id]);
@@ -1145,6 +1159,89 @@ function HistoricoNegTab({ deal, authFetch }) {
   };
 
   const upd = (k, v) => setForm(f => ({...f, [k]: v}));
+
+  // --- contraproposta handlers ---
+  const updC      = (k, v) => setCForm(f => ({...f, [k]: v}));
+  const cOpenNew  = (offerId) => { setCForm({...EMPTY_CONTRA}); setCEditing({ offerId, item: "new" }); cancel(); };
+  const cOpenEdit = (offerId, c) => {
+    setCForm({
+      ...c,
+      cap_contraproposta:                c.cap_contraproposta != null ? +(c.cap_contraproposta * 100).toFixed(4) : "",
+      entrada_percentual_contraproposta: c.entrada_percentual_contraproposta != null ? +(c.entrada_percentual_contraproposta * 100).toFixed(2) : "",
+    });
+    setCEditing({ offerId, item: c });
+    cancel();
+  };
+  const cCancel = () => { setCEditing(null); setCForm({}); };
+  const cSave = async () => {
+    setCSaving(true);
+    const payload = {
+      valor_contraproposta:              cForm.valor_contraproposta !== "" ? Number(cForm.valor_contraproposta) : null,
+      cap_contraproposta:                cForm.cap_contraproposta !== "" ? Number(cForm.cap_contraproposta) / 100 : null,
+      modo_pgto_contraproposta:          cForm.modo_pgto_contraproposta || null,
+      entrada_percentual_contraproposta: cForm.entrada_percentual_contraproposta !== "" ? Number(cForm.entrada_percentual_contraproposta) / 100 : null,
+      parcelamento_contraproposta:       cForm.parcelamento_contraproposta || null,
+      notas_contraproposta:              cForm.notas_contraproposta || null,
+    };
+    if (cEditing.item === "new") {
+      await authFetch(`/api/historico/${cEditing.offerId}/contrapropostas`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+    } else {
+      await authFetch(`/api/contrapropostas/${cEditing.item.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+    }
+    setCSaving(false); cCancel(); load();
+  };
+  const cRemove = async (c) => {
+    if (!confirm("Excluir esta contraproposta?")) return;
+    await authFetch(`/api/contrapropostas/${c.id}`, { method: "DELETE" });
+    load();
+  };
+
+  const ContraForm = ({ offerId }) => (
+    <div className="ml-5 mt-1 rounded-lg p-3 flex flex-col gap-3" style={{ background: "rgba(47,201,255,0.04)", border: "1px solid rgba(47,201,255,0.25)" }}>
+      <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#1A9FC0" }}>
+        {cEditing?.item === "new" ? "Nova Contraproposta" : "Editar Contraproposta"}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="gp-label">Valor</label>
+          <CurrencyInput value={cForm.valor_contraproposta ?? ""} onChange={v => updC("valor_contraproposta", v)} placeholder="0" />
+        </div>
+        <div>
+          <label className="gp-label">Cap Rate (%)</label>
+          <input className="gp-input mono" type="number" step="0.01" value={cForm.cap_contraproposta ?? ""} onChange={e => updC("cap_contraproposta", e.target.value)} placeholder="Ex: 8.83" />
+        </div>
+        <div>
+          <label className="gp-label">Modo Pgto</label>
+          <select className="gp-select" value={cForm.modo_pgto_contraproposta || ""} onChange={e => updC("modo_pgto_contraproposta", e.target.value)}>
+            <option value="">Selecione…</option>
+            {MODO_PGTO_OPTS.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="gp-label">Entrada (%)</label>
+          <input className="gp-input mono" type="number" step="1" min="0" max="100" value={cForm.entrada_percentual_contraproposta ?? ""} onChange={e => updC("entrada_percentual_contraproposta", e.target.value)} placeholder="Ex: 90" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Parcelamento</label>
+          <input className="gp-input" value={cForm.parcelamento_contraproposta || ""} onChange={e => updC("parcelamento_contraproposta", e.target.value)} placeholder="Ex: 30% em 24m em cash" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Notas</label>
+          <textarea className="gp-textarea scrollbar" rows={2} value={cForm.notas_contraproposta || ""} onChange={e => updC("notas_contraproposta", e.target.value)} placeholder="Observações…" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 justify-end">
+        <button onClick={cCancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
+        <button onClick={cSave} disabled={cSaving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#1A9FC0", color: "#fff" }}>
+          {cSaving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
 
   const InlineForm = ({ label }) => (
     <div className="rounded-lg p-3 flex flex-col gap-3" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
@@ -1251,6 +1348,56 @@ function HistoricoNegTab({ deal, authFetch }) {
                 </div>
               </div>
               {isEditing && <InlineForm label="Editar Registro" />}
+
+              {/* contrapropostas aninhadas */}
+              {(contraMap[item.id] || []).map(c => {
+                const isEditingC = cEditing && cEditing.item !== "new" && cEditing.item?.id === c.id;
+                return (
+                  <React.Fragment key={c.id}>
+                    <div className="ml-5 flex gap-2">
+                      <div className="flex flex-col items-center" style={{ width: 14, flexShrink: 0 }}>
+                        <div className="w-2 h-2 rounded-full mt-1.5" style={{ background: "#1A9FC0", flexShrink: 0 }} />
+                      </div>
+                      <div className="flex-1 rounded-lg p-2.5 mb-0.5" style={{ background: "rgba(47,201,255,0.05)", border: "1px solid rgba(47,201,255,0.2)" }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#1A9FC0" }}>Contraproposta</span>
+                          <div className="flex items-center gap-1">
+                            <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(c.created_at)}</span>
+                            <button onClick={() => isEditingC ? cCancel() : cOpenEdit(item.id, c)}
+                              className="p-1 rounded hover:bg-[var(--border)]"
+                              style={{ color: isEditingC ? "#DC2626" : "#1A9FC0" }}>
+                              <IconEdit size={11}/>
+                            </button>
+                            <button onClick={() => cRemove(c)} className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                          {c.valor_contraproposta != null && <div><span className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Valor </span><span className="mono text-[11px] font-semibold">{fmtBRL(c.valor_contraproposta)}</span></div>}
+                          {c.cap_contraproposta   != null && <div><span className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Cap </span><span className="mono text-[11px] font-semibold">{fmtPct(c.cap_contraproposta)}</span></div>}
+                          {c.modo_pgto_contraproposta     && <div><span className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Pgto </span><span className="text-[11px]">{c.modo_pgto_contraproposta}</span></div>}
+                          {c.entrada_percentual_contraproposta != null && <div><span className="text-[9px] uppercase" style={{ color: "var(--text-2)" }}>Entrada </span><span className="mono text-[11px]">{fmtPct(c.entrada_percentual_contraproposta)}</span></div>}
+                        </div>
+                        {c.parcelamento_contraproposta && <div className="text-[11px] mt-1" style={{ color: "var(--text-2)", whiteSpace: "pre-line" }}>{c.parcelamento_contraproposta}</div>}
+                        {c.notas_contraproposta        && <div className="text-[11px] mt-1 italic" style={{ color: "var(--text-2)" }}>{c.notas_contraproposta}</div>}
+                      </div>
+                    </div>
+                    {isEditingC && <ContraForm offerId={item.id} />}
+                  </React.Fragment>
+                );
+              })}
+              {/* botão + form nova contraproposta */}
+              {!cEditing && !isEditing && (
+                <button onClick={() => cOpenNew(item.id)}
+                  className="ml-5 flex items-center gap-1 text-[11px] px-2.5 py-1 rounded self-start"
+                  style={{ background: "rgba(47,201,255,0.08)", color: "#1A9FC0", border: "1px solid rgba(47,201,255,0.25)" }}>
+                  <IconPlus size={11}/> Contraproposta
+                </button>
+              )}
+              {cEditing?.item === "new" && cEditing?.offerId === item.id && <ContraForm offerId={item.id} />}
             </React.Fragment>
           );
         })}
