@@ -129,6 +129,196 @@ def list_deals(_: dict = Depends(require_auth)):
     return [row_to_deal(dict(row)) for _, row in df.iterrows()]
 
 
+# ---------- PORTFOLIO ----------
+def row_to_portfolio_item(row: dict) -> dict:
+    row = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+    created_at = row.get("created_at")
+    return {
+        "id":         int(row["id"]),
+        "deal_id":    int(row["deal_id"]),
+        "perfil":     row.get("perfil"),
+        "imovel":     row.get("imovel"),
+        "aluguel":    _float(row.get("aluguel")),
+        "endereco":   row.get("endereco"),
+        "cidade":     row.get("cidade"),
+        "uf":         row.get("uf"),
+        "abl":        _float(row.get("abl")),
+        "created_at": created_at.isoformat() if created_at else None,
+    }
+
+
+class PortfolioItemPayload(BaseModel):
+    perfil:   Optional[str]   = None
+    imovel:   Optional[str]   = None
+    aluguel:  Optional[float] = None
+    endereco: Optional[str]   = None
+    cidade:   Optional[str]   = None
+    uf:       Optional[str]   = None
+    abl:      Optional[float] = None
+
+
+# ---------- HISTORICO NEGOCIACOES ----------
+def row_to_historico(row: dict) -> dict:
+    row = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
+    created_at = row.get("created_at")
+    return {
+        "id":              int(row["id"]),
+        "deal_id":         int(row["deal_id"]) if row.get("deal_id") else None,
+        "created_at":      created_at.isoformat() if created_at else None,
+        "tipo":            row.get("tipo"),
+        "valor_aquisicao": _float(row.get("valor_aquisicao")),
+        "cap":             _float(row.get("cap")),
+        "modo_pgto":       row.get("modo_pgto"),
+        "entrada_pct":     _float(row.get("entrada_pct")),
+        "parcelamento":    row.get("parcelamento"),
+        "notas":           row.get("notas"),
+    }
+
+
+@app.get("/api/deals/{deal_id}/historico")
+def list_historico(deal_id: int, _: dict = Depends(require_auth)):
+    df = read_table(
+        "SELECT * FROM historico_negociacoes WHERE deal_id = :deal_id ORDER BY created_at DESC",
+        {"deal_id": deal_id},
+    )
+    return [row_to_historico(dict(row)) for _, row in df.iterrows()]
+
+
+class HistoricoPayload(BaseModel):
+    tipo:            Optional[str]   = None
+    valor_aquisicao: Optional[float] = None
+    cap:             Optional[float] = None
+    modo_pgto:       Optional[str]   = None
+    entrada_pct:     Optional[float] = None
+    parcelamento:    Optional[str]   = None
+    notas:           Optional[str]   = None
+
+
+@app.post("/api/deals/{deal_id}/historico", status_code=201)
+def create_historico(deal_id: int, payload: HistoricoPayload, _: dict = Depends(require_auth)):
+    sql = text("""
+        INSERT INTO historico_negociacoes
+            (deal_id, tipo, valor_aquisicao, cap, modo_pgto, entrada_pct, parcelamento, notas)
+        VALUES
+            (:deal_id, :tipo, :valor_aquisicao, :cap, :modo_pgto, :entrada_pct, :parcelamento, :notas)
+        RETURNING id
+    """)
+    with get_engine().begin() as conn:
+        new_id = conn.execute(sql, {
+            "deal_id": deal_id, "tipo": payload.tipo,
+            "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
+            "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
+            "parcelamento": payload.parcelamento, "notas": payload.notas,
+        }).scalar_one()
+    df = read_table("SELECT * FROM historico_negociacoes WHERE id = :id", {"id": new_id})
+    return row_to_historico(dict(df.iloc[0]))
+
+
+@app.put("/api/historico/{item_id}")
+def update_historico(item_id: int, payload: HistoricoPayload, _: dict = Depends(require_auth)):
+    sql = text("""
+        UPDATE historico_negociacoes SET
+            tipo            = :tipo,
+            valor_aquisicao = :valor_aquisicao,
+            cap             = :cap,
+            modo_pgto       = :modo_pgto,
+            entrada_pct     = :entrada_pct,
+            parcelamento    = :parcelamento,
+            notas           = :notas
+        WHERE id = :id
+    """)
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {
+            "id": item_id, "tipo": payload.tipo,
+            "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
+            "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
+            "parcelamento": payload.parcelamento, "notas": payload.notas,
+        })
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Histórico item not found")
+    df = read_table("SELECT * FROM historico_negociacoes WHERE id = :id", {"id": item_id})
+    return row_to_historico(dict(df.iloc[0]))
+
+
+@app.delete("/api/historico/{item_id}", status_code=204)
+def delete_historico(item_id: int, _: dict = Depends(require_auth)):
+    sql = text("DELETE FROM historico_negociacoes WHERE id = :id")
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {"id": item_id})
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Histórico item not found")
+
+
+@app.get("/api/deals/{deal_id}/portfolio")
+def list_portfolio(deal_id: int, _: dict = Depends(require_auth)):
+    df = read_table(
+        "SELECT * FROM portfolio WHERE deal_id = :deal_id ORDER BY created_at ASC",
+        {"deal_id": deal_id},
+    )
+    return [row_to_portfolio_item(dict(row)) for _, row in df.iterrows()]
+
+
+@app.post("/api/deals/{deal_id}/portfolio", status_code=201)
+def create_portfolio_item(deal_id: int, payload: PortfolioItemPayload, _: dict = Depends(require_auth)):
+    sql = text("""
+        INSERT INTO portfolio (deal_id, perfil, imovel, aluguel, endereco, cidade, uf, abl)
+        VALUES (:deal_id, :perfil, :imovel, :aluguel, :endereco, :cidade, :uf, :abl)
+        RETURNING id
+    """)
+    with get_engine().begin() as conn:
+        new_id = conn.execute(sql, {
+            "deal_id":  deal_id,
+            "perfil":   payload.perfil,
+            "imovel":   payload.imovel,
+            "aluguel":  payload.aluguel,
+            "endereco": payload.endereco,
+            "cidade":   payload.cidade,
+            "uf":       payload.uf,
+            "abl":      payload.abl,
+        }).scalar_one()
+    df = read_table("SELECT * FROM portfolio WHERE id = :id", {"id": new_id})
+    return row_to_portfolio_item(dict(df.iloc[0]))
+
+
+@app.put("/api/portfolio/{item_id}")
+def update_portfolio_item(item_id: int, payload: PortfolioItemPayload, _: dict = Depends(require_auth)):
+    sql = text("""
+        UPDATE portfolio SET
+            perfil   = :perfil,
+            imovel   = :imovel,
+            aluguel  = :aluguel,
+            endereco = :endereco,
+            cidade   = :cidade,
+            uf       = :uf,
+            abl      = :abl
+        WHERE id = :id
+    """)
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {
+            "id":       item_id,
+            "perfil":   payload.perfil,
+            "imovel":   payload.imovel,
+            "aluguel":  payload.aluguel,
+            "endereco": payload.endereco,
+            "cidade":   payload.cidade,
+            "uf":       payload.uf,
+            "abl":      payload.abl,
+        })
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Portfolio item not found")
+    df = read_table("SELECT * FROM portfolio WHERE id = :id", {"id": item_id})
+    return row_to_portfolio_item(dict(df.iloc[0]))
+
+
+@app.delete("/api/portfolio/{item_id}", status_code=204)
+def delete_portfolio_item(item_id: int, _: dict = Depends(require_auth)):
+    sql = text("DELETE FROM portfolio WHERE id = :id")
+    with get_engine().begin() as conn:
+        result = conn.execute(sql, {"id": item_id})
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Portfolio item not found")
+
+
 class DealPayload(BaseModel):
     produto: Optional[str] = None
     status: Optional[str] = None
