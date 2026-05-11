@@ -46,13 +46,32 @@ def _create_folder(service, name: str, parent_id: str) -> dict:
     service.permissions().create(fileId=f["id"], body={"type": "anyone", "role": "reader"}).execute()
     return f
 
+def _next_folder_number(service) -> int:
+    """Retorna o próximo número sequencial baseado nas pastas existentes na raiz do Drive."""
+    try:
+        q = f"'{_DRIVE_ROOT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        result = service.files().list(q=q, fields="files(name)", pageSize=1000).execute()
+        max_num = 0
+        for f in result.get("files", []):
+            name = f.get("name", "")
+            # extrai número do início do nome, ex: "30. IGC ONIX" -> 30
+            part = name.split(".")[0].strip()
+            if part.isdigit():
+                max_num = max(max_num, int(part))
+        return max_num + 1
+    except Exception as e:
+        print(f"[DRIVE] Erro ao listar pastas para numeração: {e}")
+        return 1
+
 def create_deal_folders(deal_name: str) -> Optional[str]:
     """Cria pasta do deal + subpastas no Drive. Retorna JSON string com os links ou None."""
     service = _get_drive_service()
     if not service:
         return None
     try:
-        main = _create_folder(service, deal_name, _DRIVE_ROOT_FOLDER_ID)
+        num = _next_folder_number(service)
+        numbered_name = f"{num}. {deal_name}"
+        main = _create_folder(service, numbered_name, _DRIVE_ROOT_FOLDER_ID)
         links = {"_main": main["webViewLink"]}
         for sub in _DRIVE_SUBFOLDERS:
             sf = _create_folder(service, sub, main["id"])
