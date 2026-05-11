@@ -16,6 +16,52 @@ from sqlalchemy import text
 
 from conn_db import get_engine, read_table, insert_deal
 
+# ---------- GOOGLE DRIVE ----------
+_DRIVE_ROOT_FOLDER_ID = os.getenv("DRIVE_ROOT_FOLDER_ID", "11VapUMvFXXmIG5LD88WaoOKrKxvVxD-P")
+_DRIVE_SUBFOLDERS = ["Material Imóvel", "Teaser", "Estudo de Mercado", "Propostas Enviadas", "Modelo de Aquisição"]
+
+def _get_drive_service():
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+        sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        if sa_json:
+            creds_dict = json.loads(sa_json)
+        else:
+            sa_path = os.path.join(os.path.dirname(__file__), "service_account.json")
+            with open(sa_path) as f:
+                creds_dict = json.load(f)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict, scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        return build("drive", "v3", credentials=creds)
+    except Exception as e:
+        print(f"[DRIVE] Erro ao inicializar serviço: {e}")
+        return None
+
+def _create_folder(service, name: str, parent_id: str) -> dict:
+    meta = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]}
+    f = service.files().create(body=meta, fields="id,webViewLink").execute()
+    # tornar visível para qualquer um com o link
+    service.permissions().create(fileId=f["id"], body={"type": "anyone", "role": "reader"}).execute()
+    return f
+
+def create_deal_folders(deal_name: str) -> Optional[str]:
+    """Cria pasta do deal + subpastas no Drive. Retorna JSON string com os links ou None."""
+    service = _get_drive_service()
+    if not service:
+        return None
+    try:
+        main = _create_folder(service, deal_name, _DRIVE_ROOT_FOLDER_ID)
+        links = {"_main": main["webViewLink"]}
+        for sub in _DRIVE_SUBFOLDERS:
+            sf = _create_folder(service, sub, main["id"])
+            links[sub] = sf["webViewLink"]
+        return json.dumps(links, ensure_ascii=False)
+    except Exception as e:
+        print(f"[DRIVE] Erro ao criar pastas: {e}")
+        return None
+
 app = FastAPI()
 
 app.add_middleware(
@@ -110,6 +156,7 @@ def row_to_deal(row: dict) -> dict:
         "principais_locatarios": row.get("principais_locatarios"),
         "proximos_passos": row.get("proximos_passos"),
         "historico_negociacoes": row.get("historico_negociacoes"),
+        "drive_folders": row.get("drive_folders"),
         "created_at": created_at.isoformat() if created_at else None,
         "updated_at": updated_at.isoformat() if updated_at else None,
         "preco_pedido": None,
@@ -457,6 +504,15 @@ def create_deal(payload: DealPayload, _: dict = Depends(require_auth)):
         proximos_passos=payload.proximos_passos,
         historico_negociacoes=payload.historico_negociacoes,
     )
+    # Criar pastas no Drive
+    deal_name = payload.produto or f"Deal #{new_id}"
+    drive_folders = create_deal_folders(deal_name)
+    if drive_folders:
+        with get_engine().begin() as conn:
+            conn.execute(
+                text("UPDATE pipe_deals SET drive_folders = :df WHERE id = :id"),
+                {"df": drive_folders, "id": new_id}
+            )
     df = read_table("SELECT * FROM pipe_deals WHERE id = :id", {"id": new_id})
     return row_to_deal(dict(df.iloc[0]))
 
