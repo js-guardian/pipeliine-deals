@@ -961,15 +961,72 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
 }
 
 // ---------- FILES (Google Drive) ----------
-function FilesTab({ deal }) {
-  const folders = React.useMemo(() => {
-    if (!deal.drive_folders) return null;
-    try { return JSON.parse(deal.drive_folders); } catch { return null; }
-  }, [deal.drive_folders]);
+function FilesTab({ deal, authFetch }) {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [uploading, setUploading] = React.useState(null); // nome da pasta em upload
 
-  const FOLDER_ORDER = ["Material Imóvel", "Teaser", "Estudo de Mercado", "Propostas Enviadas", "Modelo de Aquisição"];
+  const dealId = deal && deal.id;
 
-  if (!folders) return (
+  const load = () => {
+    if (!dealId) return;
+    setLoading(true);
+    authFetch(`/api/deals/${dealId}/drive-files`)
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  React.useEffect(() => { load(); }, [dealId]);
+
+  const handleUpload = async (folderName, file) => {
+    if (!file) return;
+    setUploading(folderName);
+    const fd = new FormData();
+    fd.append("folder_name", folderName);
+    fd.append("file", file);
+    try {
+      const r = await authFetch(`/api/deals/${dealId}/drive-upload`, { method: "POST", body: fd });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); alert("Erro: " + (e.detail || r.status)); }
+      else load();
+    } catch (e) {
+      alert("Erro no upload: " + e.message);
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  // ---- ícones inline ----
+  const IcoFolder = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+  const IcoFile = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+    </svg>
+  );
+  const IcoExt = () => (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+    </svg>
+  );
+
+  // Deal ainda não salvo — sem ID
+  if (!dealId) return (
+    <div className="flex flex-col gap-3 py-2">
+      <div className="text-[12px] px-3 py-3 rounded-lg" style={{ color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+        As pastas do Google Drive serão criadas automaticamente ao salvar o deal.
+      </div>
+    </div>
+  );
+
+  if (loading && !data) return (
+    <div className="text-[12px] px-3 py-3" style={{ color: "var(--text-2)" }}>Carregando arquivos…</div>
+  );
+
+  if (!data || (!data.main_link && (!data.folders || data.folders.length === 0))) return (
     <div className="flex flex-col gap-3 py-2">
       <div className="text-[12px] px-3 py-3 rounded-lg" style={{ color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
         Pasta do Drive ainda não criada para este deal. Deals novos recebem as pastas automaticamente.
@@ -979,36 +1036,59 @@ function FilesTab({ deal }) {
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Link para pasta principal */}
-      {folders._main && (
-        <a href={folders._main} target="_blank" rel="noopener noreferrer"
+      {/* Pasta principal */}
+      {data.main_link && (
+        <a href={data.main_link} target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-3 px-4 py-3 rounded-lg mb-1"
-          style={{ background: "rgba(59,82,121,0.06)", border: "1px solid #D6DCE6", textDecoration: "none" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B5279" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          <span className="flex-1 text-[12px] font-semibold" style={{ color: "#3B5279" }}>📁 {deal.produto || "Pasta do Deal"}</span>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-          </svg>
+          style={{ background: "rgba(59,82,121,0.06)", border: "1px solid #D6DCE6", textDecoration: "none", color: "#3B5279" }}>
+          <IcoFolder />
+          <span className="flex-1 text-[12px] font-semibold">📁 {deal.produto || "Pasta do Deal"}</span>
+          <IcoExt />
         </a>
       )}
 
-      {/* Subpastas */}
-      <div className="text-[10px] uppercase tracking-[0.08em] font-medium mb-1" style={{ color: "var(--text-2)" }}>Subpastas</div>
-      {FOLDER_ORDER.map(name => folders[name] ? (
-        <a key={name} href={folders[name]} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
-          style={{ background: "var(--surface-2)", border: "1px solid var(--border)", textDecoration: "none" }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          <span className="flex-1 text-[12px]" style={{ color: "var(--text-1)" }}>{name}</span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-          </svg>
-        </a>
-      ) : null)}
+      {/* Subpastas com arquivos */}
+      {(data.folders || []).map(folder => (
+        <div key={folder.name} className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+          {/* Cabeçalho da subpasta */}
+          <div className="flex items-center gap-2 px-3 py-2"
+            style={{ background: "var(--surface-2)", borderBottom: folder.files.length > 0 ? "1px solid var(--border)" : "none" }}>
+            <span style={{ color: "#8592AA" }}><IcoFolder /></span>
+            <span className="flex-1 text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--text-2)" }}>
+              {folder.folder_link
+                ? <a href={folder.folder_link} target="_blank" rel="noopener noreferrer"
+                    style={{ textDecoration: "none", color: "inherit" }}>{folder.name}</a>
+                : folder.name}
+            </span>
+            <label className="cursor-pointer flex items-center gap-1 text-[10px] px-2 py-1 rounded font-medium"
+              style={{ background: uploading === folder.name ? "var(--border)" : "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6",
+                       opacity: uploading ? 0.7 : 1, pointerEvents: uploading ? "none" : "auto" }}>
+              {uploading === folder.name ? "Enviando…" : "+ Arquivo"}
+              <input type="file" className="hidden" disabled={!!uploading}
+                onChange={e => { const f = e.target.files[0]; if (f) handleUpload(folder.name, f); e.target.value = ""; }} />
+            </label>
+          </div>
+
+          {/* Lista de arquivos */}
+          {folder.files.length === 0 ? (
+            <div className="px-3 py-2 text-[11px]" style={{ color: "var(--text-2)" }}>Nenhum arquivo</div>
+          ) : (
+            <div className="flex flex-col">
+              {folder.files.map((file, i) => (
+                <a key={file.id} href={file.link} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 text-[12px]"
+                  style={{ textDecoration: "none", color: "var(--text)",
+                           borderTop: i > 0 ? "1px solid var(--border)" : "none",
+                           background: "var(--surface)" }}>
+                  <span style={{ color: "#8592AA" }}><IcoFile /></span>
+                  <span className="flex-1 truncate">{file.name}</span>
+                  <span style={{ color: "#8592AA" }}><IcoExt /></span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1849,7 +1929,7 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
 
           {tab === "port" && isPortfolio && <PortfolioTab deal={deal} authFetch={authFetch} />}
 
-          {tab === "docs" && <FilesTab deal={deal} />}
+          {tab === "docs" && <FilesTab deal={deal} authFetch={authFetch} />}
         </div>
 
         <div className="px-5 py-3 flex items-center gap-2 flex-shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
@@ -1882,7 +1962,7 @@ function FormRow({ label, children, required, suffix, prefix }) {
   );
 }
 
-function DealModal({ initial, onClose, onSave }) {
+function DealModal({ initial, onClose, onSave, authFetch }) {
   const isEdit = !!initial;
   const [form, setForm] = useState(initial || {
     produto: "", perfil_ativo: "", endereco: "", area_locavel: "", ocupacao: "",
@@ -1992,9 +2072,7 @@ function DealModal({ initial, onClose, onSave }) {
         <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
           {[["ident","Identificação"],["fin","Financeiro"],["contra","Contraparte"],["acom","Acompanhamento"],["arq","Arquivos"]].map(([k,l]) => (
             <div key={k} className={`tab ${tab === k ? "active" : ""}`} onClick={() => setTab(k)} style={{ fontSize: 11 }}>
-              {l}{k === "arq" && !isEdit && pendingFiles.length > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center mono" style={{ fontSize: 9, minWidth: 15, height: 15, borderRadius: 999, background: "#2FC9FF", color: "#fff", fontWeight: 700, padding: "0 4px" }}>{pendingFiles.length}</span>
-              )}
+              {l}
             </div>
           ))}
         </div>
@@ -2145,56 +2223,7 @@ function DealModal({ initial, onClose, onSave }) {
           )}
 
           {tab === "arq" && (
-            isEdit ? (
-              <FilesTab deal={initial} />
-            ) : (
-              <div className="flex flex-col gap-4">
-                <div className="text-[12px] px-3 py-2.5 rounded-md" style={{ background: "rgba(47,201,255,0.08)", border: "1px solid rgba(47,201,255,0.3)", color: "#2F5597" }}>
-                  Selecione os arquivos abaixo. Eles serão enviados automaticamente após salvar o deal.
-                </div>
-                {STORAGE_FOLDERS.map(({ key, label }) => {
-                  const folderPending = pendingFiles.filter(pf => pf.folderKey === key);
-                  return (
-                    <div key={key}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-[10px] uppercase tracking-[0.08em] font-medium" style={{ color: "var(--text-2)" }}>{label}</div>
-                        <label className="cursor-pointer flex items-center gap-1 text-[11px] px-2.5 py-1 rounded font-medium"
-                          style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
-                          + Adicionar
-                          <input type="file" className="hidden"
-                            onChange={e => {
-                              const f = e.target.files[0];
-                              if (f) setPendingFiles(prev => [...prev, { folderKey: key, folderLabel: label, file: f, id: Date.now() + Math.random() }]);
-                              e.target.value = "";
-                            }} />
-                        </label>
-                      </div>
-                      {folderPending.length === 0 ? (
-                        <div className="text-[12px] py-1.5 px-2 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
-                          Nenhum arquivo selecionado
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          {folderPending.map(pf => (
-                            <div key={pf.id} className="flex items-center gap-2 px-3 py-2 rounded text-[12px]"
-                              style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8592AA" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                              </svg>
-                              <span className="flex-1 truncate" style={{ color: "var(--text)" }} title={pf.file.name}>{pf.file.name}</span>
-                              <button type="button" onClick={() => setPendingFiles(prev => prev.filter(p => p.id !== pf.id))}
-                                className="p-1 rounded hover:bg-[var(--border)]" style={{ color: "#D9534F" }}>
-                                <IconClose size={12} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )
+            <FilesTab deal={isEdit ? initial : null} authFetch={authFetch} />
           )}
         </div>
 
@@ -2412,6 +2441,7 @@ function App({ session }) {
           initial={modal.mode === "edit" ? modal.deal : null}
           onClose={() => setModal(null)}
           onSave={handleSave}
+          authFetch={authFetch}
         />
       )}
 
