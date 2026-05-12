@@ -1243,7 +1243,8 @@ const HIST_TIPO_COLORS = {
 const HIST_TIPO_OPTS = Object.keys(HIST_TIPO_COLORS);
 const MODO_PGTO_OPTS = ["CASH","COTAS","CETIPADO","MISTO"];
 
-const EMPTY_HIST   = { tipo: "", valor_aquisicao: "", cap: "", modo_pgto: "", entrada_pct: "", parcelamento: "", notas: "" };
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const EMPTY_HIST   = { tipo: "", data_negociacao: todayISO(), valor_aquisicao: "", cap: "", modo_pgto: "", entrada_pct: "", parcelamento: "", notas: "" };
 const EMPTY_CONTRA = { valor_contraproposta: "", cap_contraproposta: "", modo_pgto_contraproposta: "", entrada_percentual_contraproposta: "", parcelamento_contraproposta: "", notas_contraproposta: "" };
 
 function HistoricoNegTab({ deal, authFetch }) {
@@ -1285,6 +1286,7 @@ function HistoricoNegTab({ deal, authFetch }) {
   const openEdit = (item) => {
     setForm({
       ...item,
+      data_negociacao: item.data_negociacao ? item.data_negociacao.slice(0, 10) : (item.created_at ? item.created_at.slice(0, 10) : todayISO()),
       valor_aquisicao: item.valor_aquisicao ?? "",
       cap:             item.cap != null ? +(item.cap * 100).toFixed(4) : "",
       entrada_pct:     item.entrada_pct != null ? +(item.entrada_pct * 100).toFixed(2) : "",
@@ -1301,13 +1303,14 @@ function HistoricoNegTab({ deal, authFetch }) {
   };
   const toPayload = () => ({
     lado:            currentLado,
-    tipo:            form.tipo         || null,
+    tipo:            form.tipo            || null,
+    data_negociacao: form.data_negociacao || null,
     valor_aquisicao: toNum(form.valor_aquisicao),
     cap:             toNum(form.cap, 100),
-    modo_pgto:       form.modo_pgto    || null,
+    modo_pgto:       form.modo_pgto       || null,
     entrada_pct:     toNum(form.entrada_pct, 100),
-    parcelamento:    form.parcelamento || null,
-    notas:           form.notas        || null,
+    parcelamento:    form.parcelamento    || null,
+    notas:           form.notas           || null,
   });
 
   const save = async () => {
@@ -1443,7 +1446,11 @@ function HistoricoNegTab({ deal, authFetch }) {
     <div className="rounded-lg p-3 flex flex-col gap-3" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
       <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>{label}</div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">
+        <div>
+          <label className="gp-label">Data</label>
+          <input className="gp-input mono" type="date" value={form.data_negociacao || ""} onChange={e => upd("data_negociacao", e.target.value)} />
+        </div>
+        <div>
           <label className="gp-label">Tipo</label>
           <select className="gp-select" value={form.tipo || ""} onChange={e => upd("tipo", e.target.value)}>
             <option value="">Selecione…</option>
@@ -1518,7 +1525,7 @@ function HistoricoNegTab({ deal, authFetch }) {
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.created_at)}</span>
+                      <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.data_negociacao || item.created_at)}</span>
                       <button onClick={() => isEditing ? cancel() : openEdit(item)}
                         className="p-1 rounded hover:bg-[var(--border)]"
                         style={{ color: isEditing ? "#DC2626" : "#3B5279" }} title="Editar">
@@ -1608,7 +1615,7 @@ function HistoricoNegTab({ deal, authFetch }) {
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.created_at)}</span>
+                      <span className="mono text-[10px]" style={{ color: "var(--text-2)" }}>{fmtDate(item.data_negociacao || item.created_at)}</span>
                       <button onClick={() => isEditing ? cancel() : openEdit(item)}
                         className="p-1 rounded hover:bg-[var(--border)]"
                         style={{ color: isEditing ? "#DC2626" : "#3B5279" }} title="Editar">

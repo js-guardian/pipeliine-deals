@@ -98,6 +98,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def run_migrations():
+    """Aplica migrações incrementais no banco ao iniciar."""
+    migrations = [
+        "ALTER TABLE historico_negociacoes ADD COLUMN IF NOT EXISTS data_negociacao DATE",
+    ]
+    try:
+        with get_engine().begin() as conn:
+            for sql in migrations:
+                conn.execute(text(sql))
+        print("[MIGRATE] Migrações aplicadas com sucesso.")
+    except Exception as e:
+        print(f"[MIGRATE] Erro ao aplicar migrações: {e}")
+
 # ---------- AUTH ----------
 _SUPABASE_URL        = "https://varkabkouznhupdisdcg.supabase.co"
 _SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
@@ -235,18 +249,20 @@ class PortfolioItemPayload(BaseModel):
 def row_to_historico(row: dict) -> dict:
     row = {k: (None if isinstance(v, float) and math.isnan(v) else v) for k, v in row.items()}
     created_at = row.get("created_at")
+    data_neg   = row.get("data_negociacao")
     return {
-        "id":              int(row["id"]),
-        "deal_id":         int(row["deal_id"]) if row.get("deal_id") else None,
-        "created_at":      created_at.isoformat() if created_at else None,
-        "lado":            row.get("lado") or "GUARDIAN",
-        "tipo":            row.get("tipo"),
-        "valor_aquisicao": _float(row.get("valor_aquisicao")),
-        "cap":             _float(row.get("cap")),
-        "modo_pgto":       row.get("modo_pgto"),
-        "entrada_pct":     _float(row.get("entrada_pct")),
-        "parcelamento":    row.get("parcelamento"),
-        "notas":           row.get("notas"),
+        "id":               int(row["id"]),
+        "deal_id":          int(row["deal_id"]) if row.get("deal_id") else None,
+        "created_at":       created_at.isoformat() if created_at else None,
+        "data_negociacao":  str(data_neg) if data_neg is not None else None,
+        "lado":             row.get("lado") or "GUARDIAN",
+        "tipo":             row.get("tipo"),
+        "valor_aquisicao":  _float(row.get("valor_aquisicao")),
+        "cap":              _float(row.get("cap")),
+        "modo_pgto":        row.get("modo_pgto"),
+        "entrada_pct":      _float(row.get("entrada_pct")),
+        "parcelamento":     row.get("parcelamento"),
+        "notas":            row.get("notas"),
     }
 
 
@@ -260,61 +276,77 @@ def list_historico(deal_id: int, _: dict = Depends(require_auth)):
 
 
 class HistoricoPayload(BaseModel):
-    lado:            Optional[str]   = "GUARDIAN"
-    tipo:            Optional[str]   = None
-    valor_aquisicao: Optional[float] = None
-    cap:             Optional[float] = None
-    modo_pgto:       Optional[str]   = None
-    entrada_pct:     Optional[float] = None
-    parcelamento:    Optional[str]   = None
-    notas:           Optional[str]   = None
+    lado:             Optional[str]   = "GUARDIAN"
+    tipo:             Optional[str]   = None
+    data_negociacao:  Optional[str]   = None   # ISO date "YYYY-MM-DD"
+    valor_aquisicao:  Optional[float] = None
+    cap:              Optional[float] = None
+    modo_pgto:        Optional[str]   = None
+    entrada_pct:      Optional[float] = None
+    parcelamento:     Optional[str]   = None
+    notas:            Optional[str]   = None
 
 
 @app.post("/api/deals/{deal_id}/historico", status_code=201)
 def create_historico(deal_id: int, payload: HistoricoPayload, _: dict = Depends(require_auth)):
-    sql = text("""
-        INSERT INTO historico_negociacoes
-            (deal_id, lado, tipo, valor_aquisicao, cap, modo_pgto, entrada_pct, parcelamento, notas)
-        VALUES
-            (:deal_id, :lado, :tipo, :valor_aquisicao, :cap, :modo_pgto, :entrada_pct, :parcelamento, :notas)
-        RETURNING id
-    """)
-    with get_engine().begin() as conn:
-        new_id = conn.execute(sql, {
-            "deal_id": deal_id, "lado": payload.lado or "GUARDIAN", "tipo": payload.tipo,
-            "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
-            "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
-            "parcelamento": payload.parcelamento, "notas": payload.notas,
-        }).scalar_one()
-    df = read_table("SELECT * FROM historico_negociacoes WHERE id = :id", {"id": new_id})
-    return row_to_historico(dict(df.iloc[0]))
+    try:
+        sql = text("""
+            INSERT INTO historico_negociacoes
+                (deal_id, lado, tipo, data_negociacao, valor_aquisicao, cap, modo_pgto, entrada_pct, parcelamento, notas)
+            VALUES
+                (:deal_id, :lado, :tipo, :data_negociacao, :valor_aquisicao, :cap, :modo_pgto, :entrada_pct, :parcelamento, :notas)
+            RETURNING id
+        """)
+        with get_engine().begin() as conn:
+            new_id = conn.execute(sql, {
+                "deal_id": deal_id, "lado": payload.lado or "GUARDIAN", "tipo": payload.tipo,
+                "data_negociacao": payload.data_negociacao or None,
+                "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
+                "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
+                "parcelamento": payload.parcelamento, "notas": payload.notas,
+            }).scalar_one()
+        df = read_table("SELECT * FROM historico_negociacoes WHERE id = :id", {"id": new_id})
+        return row_to_historico(dict(df.iloc[0]))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] create_historico deal_id={deal_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.put("/api/historico/{item_id}")
 def update_historico(item_id: int, payload: HistoricoPayload, _: dict = Depends(require_auth)):
-    sql = text("""
-        UPDATE historico_negociacoes SET
-            lado            = :lado,
-            tipo            = :tipo,
-            valor_aquisicao = :valor_aquisicao,
-            cap             = :cap,
-            modo_pgto       = :modo_pgto,
-            entrada_pct     = :entrada_pct,
-            parcelamento    = :parcelamento,
-            notas           = :notas
-        WHERE id = :id
-    """)
-    with get_engine().begin() as conn:
-        result = conn.execute(sql, {
-            "id": item_id, "lado": payload.lado or "GUARDIAN", "tipo": payload.tipo,
-            "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
-            "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
-            "parcelamento": payload.parcelamento, "notas": payload.notas,
-        })
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Histórico item not found")
-    df = read_table("SELECT * FROM historico_negociacoes WHERE id = :id", {"id": item_id})
-    return row_to_historico(dict(df.iloc[0]))
+    try:
+        sql = text("""
+            UPDATE historico_negociacoes SET
+                lado            = :lado,
+                tipo            = :tipo,
+                data_negociacao = :data_negociacao,
+                valor_aquisicao = :valor_aquisicao,
+                cap             = :cap,
+                modo_pgto       = :modo_pgto,
+                entrada_pct     = :entrada_pct,
+                parcelamento    = :parcelamento,
+                notas           = :notas
+            WHERE id = :id
+        """)
+        with get_engine().begin() as conn:
+            result = conn.execute(sql, {
+                "id": item_id, "lado": payload.lado or "GUARDIAN", "tipo": payload.tipo,
+                "data_negociacao": payload.data_negociacao or None,
+                "valor_aquisicao": payload.valor_aquisicao, "cap": payload.cap,
+                "modo_pgto": payload.modo_pgto, "entrada_pct": payload.entrada_pct,
+                "parcelamento": payload.parcelamento, "notas": payload.notas,
+            })
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Histórico item not found")
+        df = read_table("SELECT * FROM historico_negociacoes WHERE id = :id", {"id": item_id})
+        return row_to_historico(dict(df.iloc[0]))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] update_historico item_id={item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/historico/{item_id}", status_code=204)
