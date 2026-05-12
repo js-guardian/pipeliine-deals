@@ -1302,7 +1302,6 @@ function HistoricoNegTab({ deal, authFetch }) {
     return isNaN(n) ? null : n / div;
   };
   const toPayload = () => ({
-    lado:            currentLado,
     tipo:            form.tipo            || null,
     data_negociacao: form.data_negociacao || null,
     valor_aquisicao: toNum(form.valor_aquisicao),
