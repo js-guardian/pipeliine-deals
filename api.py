@@ -26,7 +26,12 @@ def _get_drive_service():
         from googleapiclient.discovery import build
         sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
         if sa_json:
-            creds_dict = json.loads(sa_json)
+            # aceita JSON puro (local) ou base64 (Railway)
+            try:
+                creds_dict = json.loads(sa_json)
+            except json.JSONDecodeError:
+                import base64 as _b64
+                creds_dict = json.loads(_b64.b64decode(sa_json).decode("utf-8"))
         else:
             sa_path = os.path.join(os.path.dirname(__file__), "service_account.json")
             with open(sa_path) as f:
