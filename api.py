@@ -287,7 +287,7 @@ def create_historico(deal_id: int, payload: HistoricoPayload, _: dict = Depends(
                 (deal_id, tipo, valor_aquisicao, cap, modo_pgto, entrada_pct, parcelamento, notas, created_at)
             VALUES
                 (:deal_id, :tipo, :valor_aquisicao, :cap, :modo_pgto, :entrada_pct, :parcelamento, :notas,
-                 COALESCE(:created_at::timestamptz, NOW()))
+                 COALESCE(CAST(:created_at AS timestamptz), NOW()))
             RETURNING id
         """)
         with get_engine().begin() as conn:
@@ -313,7 +313,7 @@ def update_historico(item_id: int, payload: HistoricoPayload, _: dict = Depends(
         sql = text("""
             UPDATE historico_negociacoes SET
                 tipo            = :tipo,
-                created_at      = COALESCE(:created_at::timestamptz, created_at),
+                created_at      = COALESCE(CAST(:created_at AS timestamptz), created_at),
                 valor_aquisicao = :valor_aquisicao,
                 cap             = :cap,
                 modo_pgto       = :modo_pgto,
