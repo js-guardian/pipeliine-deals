@@ -239,35 +239,39 @@ const IconEdit = (p) => <Icon {...p} d={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 
 
 // ---------- CURRENCY INPUT ----------
 function CurrencyInput({ value, onChange, placeholder, style, className }) {
-  const ref = React.useRef(null);
-  const raw = (value === "" || value == null) ? "" : String(value).replace(/\D/g, "");
-  const formatted = raw === "" ? "" : Number(raw).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+  const [focused, setFocused] = React.useState(false);
+  const [draft, setDraft]     = React.useState("");
 
-  const handleChange = (e) => {
-    const el = e.target;
-    const digitsBeforeCursor = (el.value.slice(0, el.selectionStart).match(/\d/g) || []).length;
-    const newRaw = el.value.replace(/\D/g, "");
-    onChange(newRaw);
-    requestAnimationFrame(() => {
-      if (!ref.current) return;
-      const newFmt = newRaw === "" ? "" : Number(newRaw).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
-      let count = 0, pos = newFmt.length;
-      for (let i = 0; i < newFmt.length; i++) {
-        if (/\d/.test(newFmt[i])) count++;
-        if (count === digitsBeforeCursor) { pos = i + 1; break; }
-      }
-      ref.current.setSelectionRange(pos, pos);
-    });
+  // Formata para exibição quando não está em foco
+  const display = React.useMemo(() => {
+    if (value === "" || value == null) return "";
+    const n = parseFloat(String(value).replace(",", "."));
+    return isNaN(n) ? "" : n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  }, [value]);
+
+  const onFocus = () => {
+    // Ao focar, mostra o valor bruto para edição livre
+    setDraft(value === "" || value == null ? "" : String(value).replace(".", ","));
+    setFocused(true);
+  };
+
+  const onBlur = () => {
+    setFocused(false);
+    // Aceita vírgula como separador decimal (pt-BR)
+    const cleaned = draft.trim().replace(/\./g, "").replace(",", ".");
+    const n = parseFloat(cleaned);
+    onChange(isNaN(n) ? "" : String(n));
   };
 
   return (
     <input
-      ref={ref}
       className={className || "gp-input mono"}
       type="text"
-      inputMode="numeric"
-      value={formatted}
-      onChange={handleChange}
+      inputMode="decimal"
+      value={focused ? draft : display}
+      onChange={e => setDraft(e.target.value)}
+      onFocus={onFocus}
+      onBlur={onBlur}
       placeholder={placeholder}
       style={style}
     />
@@ -1273,17 +1277,26 @@ function HistoricoNegTab({ deal, authFetch }) {
 
   const save = async () => {
     setSaving(true);
-    const payload = toPayload();
-    if (editing === "new") {
-      await authFetch(`/api/deals/${deal.id}/historico`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
-    } else {
-      await authFetch(`/api/historico/${editing.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
+    try {
+      const payload = toPayload();
+      const r = editing === "new"
+        ? await authFetch(`/api/deals/${deal.id}/historico`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+          })
+        : await authFetch(`/api/historico/${editing.id}`, {
+            method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+          });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert("Erro ao salvar: " + (err.detail || r.status));
+        return;
+      }
+      cancel(); load();
+    } catch (e) {
+      alert("Erro de conexão: " + e.message);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false); cancel(); load();
   };
 
   const remove = async (item) => {
@@ -1309,24 +1322,33 @@ function HistoricoNegTab({ deal, authFetch }) {
   const cCancel = () => { setCEditing(null); setCForm({}); };
   const cSave = async () => {
     setCSaving(true);
-    const payload = {
-      valor_contraproposta:              cForm.valor_contraproposta !== "" ? Number(cForm.valor_contraproposta) : null,
-      cap_contraproposta:                cForm.cap_contraproposta !== "" ? Number(cForm.cap_contraproposta) / 100 : null,
-      modo_pgto_contraproposta:          cForm.modo_pgto_contraproposta || null,
-      entrada_percentual_contraproposta: cForm.entrada_percentual_contraproposta !== "" ? Number(cForm.entrada_percentual_contraproposta) / 100 : null,
-      parcelamento_contraproposta:       cForm.parcelamento_contraproposta || null,
-      notas_contraproposta:              cForm.notas_contraproposta || null,
-    };
-    if (cEditing.item === "new") {
-      await authFetch(`/api/historico/${cEditing.offerId}/contrapropostas`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
-    } else {
-      await authFetch(`/api/contrapropostas/${cEditing.item.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
+    try {
+      const payload = {
+        valor_contraproposta:              cForm.valor_contraproposta !== "" ? Number(cForm.valor_contraproposta) : null,
+        cap_contraproposta:                cForm.cap_contraproposta !== "" ? Number(cForm.cap_contraproposta) / 100 : null,
+        modo_pgto_contraproposta:          cForm.modo_pgto_contraproposta || null,
+        entrada_percentual_contraproposta: cForm.entrada_percentual_contraproposta !== "" ? Number(cForm.entrada_percentual_contraproposta) / 100 : null,
+        parcelamento_contraproposta:       cForm.parcelamento_contraproposta || null,
+        notas_contraproposta:              cForm.notas_contraproposta || null,
+      };
+      const r = cEditing.item === "new"
+        ? await authFetch(`/api/historico/${cEditing.offerId}/contrapropostas`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+          })
+        : await authFetch(`/api/contrapropostas/${cEditing.item.id}`, {
+            method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+          });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        alert("Erro ao salvar: " + (err.detail || r.status));
+        return;
+      }
+      cCancel(); load();
+    } catch (e) {
+      alert("Erro de conexão: " + e.message);
+    } finally {
+      setCSaving(false);
     }
-    setCSaving(false); cCancel(); load();
   };
   const cRemove = async (c) => {
     if (!confirm("Excluir esta contraproposta?")) return;
