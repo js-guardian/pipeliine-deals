@@ -237,6 +237,36 @@ const IconLogout = (p) => <Icon {...p} d={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2
 const IconPlus = (p) => <Icon {...p} d={<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>} />;
 const IconEdit = (p) => <Icon {...p} d={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>} />;
 
+// ---------- DECIMAL INPUT (aceita virgula como separador decimal) ----------
+function DecimalInput({ value, onChange, placeholder, style, className, min, max }) {
+  const [focused, setFocused] = React.useState(false);
+  const [draft, setDraft]     = React.useState("");
+
+  const onFocus = () => {
+    setDraft(value === "" || value == null ? "" : String(value).replace(".", ","));
+    setFocused(true);
+  };
+  const onBlur = () => {
+    setFocused(false);
+    const n = parseFloat(draft.trim().replace(",", "."));
+    onChange(isNaN(n) ? "" : String(n));
+  };
+
+  return (
+    <input
+      className={className || "gp-input mono"}
+      type="text"
+      inputMode="decimal"
+      value={focused ? draft : (value === "" || value == null ? "" : String(value).replace(".", ","))}
+      onChange={e => setDraft(e.target.value)}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      placeholder={placeholder}
+      style={style}
+    />
+  );
+}
+
 // ---------- CURRENCY INPUT ----------
 function CurrencyInput({ value, onChange, placeholder, style, className }) {
   const [focused, setFocused] = React.useState(false);
@@ -1264,15 +1294,20 @@ function HistoricoNegTab({ deal, authFetch }) {
   };
   const cancel = () => { setEditing(null); setForm({}); };
 
+  const toNum = (v, div = 1) => {
+    if (v === "" || v == null) return null;
+    const n = parseFloat(String(v).replace(",", "."));
+    return isNaN(n) ? null : n / div;
+  };
   const toPayload = () => ({
     lado:            currentLado,
-    tipo:            form.tipo            || null,
-    valor_aquisicao: form.valor_aquisicao !== "" ? Number(form.valor_aquisicao) : null,
-    cap:             form.cap             !== "" ? Number(form.cap) / 100        : null,
-    modo_pgto:       form.modo_pgto       || null,
-    entrada_pct:     form.entrada_pct     !== "" ? Number(form.entrada_pct) / 100 : null,
-    parcelamento:    form.parcelamento    || null,
-    notas:           form.notas           || null,
+    tipo:            form.tipo         || null,
+    valor_aquisicao: toNum(form.valor_aquisicao),
+    cap:             toNum(form.cap, 100),
+    modo_pgto:       form.modo_pgto    || null,
+    entrada_pct:     toNum(form.entrada_pct, 100),
+    parcelamento:    form.parcelamento || null,
+    notas:           form.notas        || null,
   });
 
   const save = async () => {
@@ -1323,11 +1358,16 @@ function HistoricoNegTab({ deal, authFetch }) {
   const cSave = async () => {
     setCSaving(true);
     try {
+      const toNum = (v, div = 1) => {
+        if (v === "" || v == null) return null;
+        const n = parseFloat(String(v).replace(",", "."));
+        return isNaN(n) ? null : n / div;
+      };
       const payload = {
-        valor_contraproposta:              cForm.valor_contraproposta !== "" ? Number(cForm.valor_contraproposta) : null,
-        cap_contraproposta:                cForm.cap_contraproposta !== "" ? Number(cForm.cap_contraproposta) / 100 : null,
+        valor_contraproposta:              toNum(cForm.valor_contraproposta),
+        cap_contraproposta:                toNum(cForm.cap_contraproposta, 100),
         modo_pgto_contraproposta:          cForm.modo_pgto_contraproposta || null,
-        entrada_percentual_contraproposta: cForm.entrada_percentual_contraproposta !== "" ? Number(cForm.entrada_percentual_contraproposta) / 100 : null,
+        entrada_percentual_contraproposta: toNum(cForm.entrada_percentual_contraproposta, 100),
         parcelamento_contraproposta:       cForm.parcelamento_contraproposta || null,
         notas_contraproposta:              cForm.notas_contraproposta || null,
       };
@@ -1368,7 +1408,7 @@ function HistoricoNegTab({ deal, authFetch }) {
         </div>
         <div>
           <label className="gp-label">Cap Rate (%)</label>
-          <input className="gp-input mono" type="number" step="0.01" value={cForm.cap_contraproposta ?? ""} onChange={e => updC("cap_contraproposta", e.target.value)} placeholder="Ex: 8.83" />
+          <DecimalInput value={cForm.cap_contraproposta ?? ""} onChange={v => updC("cap_contraproposta", v)} placeholder="Ex: 8,83" />
         </div>
         <div>
           <label className="gp-label">Modo Pgto</label>
@@ -1379,7 +1419,7 @@ function HistoricoNegTab({ deal, authFetch }) {
         </div>
         <div>
           <label className="gp-label">Entrada (%)</label>
-          <input className="gp-input mono" type="number" step="1" min="0" max="100" value={cForm.entrada_percentual_contraproposta ?? ""} onChange={e => updC("entrada_percentual_contraproposta", e.target.value)} placeholder="Ex: 90" />
+          <DecimalInput value={cForm.entrada_percentual_contraproposta ?? ""} onChange={v => updC("entrada_percentual_contraproposta", v)} placeholder="Ex: 90" />
         </div>
         <div className="col-span-2">
           <label className="gp-label">Parcelamento</label>
@@ -1416,7 +1456,7 @@ function HistoricoNegTab({ deal, authFetch }) {
         </div>
         <div>
           <label className="gp-label">Cap Rate (%)</label>
-          <input className="gp-input mono" type="number" step="0.01" value={form.cap ?? ""} onChange={e => upd("cap", e.target.value)} placeholder="Ex: 9.9" />
+          <DecimalInput value={form.cap ?? ""} onChange={v => upd("cap", v)} placeholder="Ex: 9,9" />
         </div>
         <div>
           <label className="gp-label">Modo Pgto</label>
@@ -1427,7 +1467,7 @@ function HistoricoNegTab({ deal, authFetch }) {
         </div>
         <div>
           <label className="gp-label">Entrada (%)</label>
-          <input className="gp-input mono" type="number" step="1" min="0" max="100" value={form.entrada_pct ?? ""} onChange={e => upd("entrada_pct", e.target.value)} placeholder="Ex: 40" />
+          <DecimalInput value={form.entrada_pct ?? ""} onChange={v => upd("entrada_pct", v)} placeholder="Ex: 40" />
         </div>
         <div className="col-span-2">
           <label className="gp-label">Parcelamento</label>
