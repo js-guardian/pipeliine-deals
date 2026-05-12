@@ -206,6 +206,11 @@ def row_to_deal(row: dict) -> dict:
 
 
 # ---------- ROUTES ----------
+@app.get("/api/version")
+def version():
+    return {"version": "2025-05-12-v2", "db": bool(os.getenv("DATABASE_URL"))}
+
+
 @app.get("/")
 def serve_frontend():
     return FileResponse("front end/index.html")

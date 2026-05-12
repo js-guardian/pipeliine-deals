@@ -1325,8 +1325,10 @@ function HistoricoNegTab({ deal, authFetch }) {
             method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
           });
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        alert("Erro ao salvar: " + (err.detail || r.status));
+        const raw = await r.text().catch(() => "");
+        let detail = String(r.status);
+        try { const j = JSON.parse(raw); detail = j.detail || j.message || raw || detail; } catch {}
+        alert("Erro ao salvar (" + r.status + "): " + detail.slice(0, 300));
         return;
       }
       cancel(); load();
@@ -1382,8 +1384,10 @@ function HistoricoNegTab({ deal, authFetch }) {
             method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
           });
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        alert("Erro ao salvar: " + (err.detail || r.status));
+        const raw = await r.text().catch(() => "");
+        let detail = String(r.status);
+        try { const j = JSON.parse(raw); detail = j.detail || j.message || raw || detail; } catch {}
+        alert("Erro ao salvar contraproposta (" + r.status + "): " + detail.slice(0, 300));
         return;
       }
       cCancel(); load();
