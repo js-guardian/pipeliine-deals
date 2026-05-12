@@ -806,7 +806,7 @@ function ExportButton({ rows }) {
   );
 }
 
-function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
+function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFetch }) {
   const [q, setQ] = useState("");
   const [fStatus, setFStatus] = useState([]);
   const [fResp, setFResp] = useState([]);
@@ -815,6 +815,13 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
   const [fUF, setFUF] = useState([]);
   const [fBroker, setFBroker] = useState([]);
   const [fMes, setFMes] = useState([]);
+
+  const handleDelete = async (e, dealId) => {
+    e.stopPropagation();
+    if (!confirm("Apagar este deal permanentemente? Esta ação não pode ser desfeita.")) return;
+    await authFetch(`/api/deals/${dealId}`, { method: "DELETE" });
+    setDeals(ds => ds.filter(d => d.id !== dealId));
+  };
 
   const cidadeOpts = useMemo(() => [...new Set(deals.map(d => d.cidade).filter(Boolean))].sort(), [deals]);
   const brokerOpts = useMemo(() => [...new Set(deals.map(d => d.nome_broker).filter(Boolean))].sort(), [deals]);
@@ -917,18 +924,19 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 160 }}>Principais Locatários</th>
               <th className="text-right font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 90 }}>Inserido</th>
               <th className="text-right font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]">Atualizado</th>
+              <th className="px-3 py-2.5" style={{ minWidth: 40 }}></th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={21} className="px-4 py-12 text-center text-[12px]" style={{ color: "var(--text-2)" }}>
+              <tr><td colSpan={22} className="px-4 py-12 text-center text-[12px]" style={{ color: "var(--text-2)" }}>
                 Nenhum deal encontrado com os filtros aplicados.
               </td></tr>
             )}
             {filtered.map(d => (
               <tr key={d.id}
                   onClick={() => openDrawer(d.id)}
-                  className={`row-hover cursor-pointer ${selectedId === d.id ? "row-selected" : ""}`}
+                  className={`group row-hover cursor-pointer ${selectedId === d.id ? "row-selected" : ""}`}
                   style={{ borderTop: "1px solid var(--border)" }}>
                 <td className="px-4 py-3" style={{ fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap" }}>{d.produto}</td>
                 <td className="px-3 py-3" style={{ whiteSpace: "nowrap" }}><StatusBadge status={d.status} /></td>
@@ -951,6 +959,16 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
                 <td className="px-3 py-3" style={{ color: "var(--text-2)" }}><div className="truncate" style={{ maxWidth: 160 }}>{d.principais_locatarios || "—"}</div></td>
                 <td className="px-3 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.created_at ? new Date(d.created_at).toLocaleDateString("pt-BR") : "—"}</td>
                 <td className="px-4 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{relTime(d.updated_at)}</td>
+                <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                  <button onClick={e => handleDelete(e, d.id)}
+                    className="p-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ color: "#D9534F" }}
+                    title="Apagar deal">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -2507,6 +2525,7 @@ function App({ session }) {
             openDrawer={openDrawer}
             selectedId={drawerId}
             openModal={openModal}
+            authFetch={authFetch}
           />
         )}
       </main>

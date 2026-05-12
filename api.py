@@ -487,6 +487,17 @@ def delete_portfolio_item(item_id: int, _: dict = Depends(require_auth)):
         raise HTTPException(status_code=404, detail="Portfolio item not found")
 
 
+@app.delete("/api/deals/{deal_id}", status_code=204)
+def delete_deal(deal_id: int, _: dict = Depends(require_auth)):
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM historico_contrapropostas WHERE offer_id IN (SELECT id FROM historico_negociacoes WHERE deal_id = :id)"), {"id": deal_id})
+        conn.execute(text("DELETE FROM historico_negociacoes WHERE deal_id = :id"), {"id": deal_id})
+        conn.execute(text("DELETE FROM portfolio WHERE deal_id = :id"), {"id": deal_id})
+        result = conn.execute(text("DELETE FROM pipe_deals WHERE id = :id"), {"id": deal_id})
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Deal não encontrado")
+
+
 class DealPayload(BaseModel):
     produto: Optional[str] = None
     status: Optional[str] = None
