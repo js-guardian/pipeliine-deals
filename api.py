@@ -539,6 +539,30 @@ def create_deal(payload: DealPayload, _: dict = Depends(require_auth)):
     return row_to_deal(dict(df.iloc[0]))
 
 
+def _strip_number_prefix(name: str) -> str:
+    """Remove prefixo numérico 'N. ' do início do nome. Ex: '31. CEL - TORRE' → 'CEL - TORRE'."""
+    parts = name.split(".", 1)
+    if len(parts) == 2 and parts[0].strip().isdigit():
+        return parts[1].strip()
+    return name.strip()
+
+def _find_deal_folder(service, deal_name: str):
+    """Busca no Drive root uma pasta que corresponda ao nome do deal.
+    Suporta pastas com múltiplos deals separados por '|', ex: '31. CEL - TORRE | CEL - GALPÃO'."""
+    try:
+        q = (f"'{_DRIVE_ROOT_FOLDER_ID}' in parents "
+             f"and mimeType='application/vnd.google-apps.folder' and trashed=false")
+        result = service.files().list(q=q, fields="files(id,name,webViewLink)", pageSize=1000).execute()
+        needle = deal_name.strip().lower()
+        for f in result.get("files", []):
+            clean = _strip_number_prefix(f.get("name", ""))
+            parts = [p.strip().lower() for p in clean.split("|")]
+            if needle in parts:
+                return f
+    except Exception as e:
+        print(f"[DRIVE] Erro ao buscar pasta do deal '{deal_name}': {e}")
+    return None
+
 def _list_folder_contents(service, folder_id: str) -> list:
     """Lista recursivamente (2 níveis) arquivos e subpastas de uma pasta do Drive."""
     try:
@@ -565,26 +589,39 @@ def _list_folder_contents(service, folder_id: str) -> list:
 
 @app.get("/api/deals/{deal_id}/drive-files")
 def get_drive_files(deal_id: int, _: dict = Depends(require_auth)):
-    """Lê ao vivo a pasta do Drive do deal — inclui subpastas criadas manualmente."""
-    df = read_table("SELECT drive_folders FROM pipe_deals WHERE id = :id", {"id": deal_id})
+    """Lê ao vivo a pasta do Drive do deal.
+    Prioridade: drive_folders salvo no DB → busca por nome no Drive root."""
+    df = read_table("SELECT drive_folders, ativo FROM pipe_deals WHERE id = :id", {"id": deal_id})
     if df.empty:
         raise HTTPException(status_code=404, detail="Deal não encontrado")
     row = dict(df.iloc[0])
-    if not row.get("drive_folders"):
-        return {"main_link": None, "main_id": None, "items": []}
-    try:
-        links = json.loads(row["drive_folders"])
-    except Exception:
-        return {"main_link": None, "main_id": None, "items": []}
 
-    main_link = links.get("_main")
-    if not main_link:
-        return {"main_link": None, "main_id": None, "items": []}
-
-    main_id = _extract_folder_id(main_link)
     service = _get_drive_service()
     if not service:
         raise HTTPException(status_code=500, detail="Serviço Drive indisponível")
+
+    main_link = None
+    main_id   = None
+
+    # 1. Tentar via coluna drive_folders (deals criados pelo app)
+    if row.get("drive_folders"):
+        try:
+            links = json.loads(row["drive_folders"])
+            main_link = links.get("_main")
+            if main_link:
+                main_id = _extract_folder_id(main_link)
+        except Exception:
+            pass
+
+    # 2. Fallback: buscar pelo nome do deal na raiz do Drive
+    if not main_id and row.get("ativo"):
+        found = _find_deal_folder(service, row["ativo"])
+        if found:
+            main_id   = found["id"]
+            main_link = found["webViewLink"]
+
+    if not main_id:
+        return {"main_link": None, "main_id": None, "items": []}
 
     items = _list_folder_contents(service, main_id)
     return {"main_link": main_link, "main_id": main_id, "items": items}
