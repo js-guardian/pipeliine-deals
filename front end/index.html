@@ -961,10 +961,126 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal }) {
 }
 
 // ---------- FILES (Google Drive) ----------
+const IcoFolder = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+  </svg>
+);
+const IcoFile = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+  </svg>
+);
+const IcoExt = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+  </svg>
+);
+
+// Componente recursivo: renderiza um item (pasta ou arquivo) e seus filhos
+function DriveItem({ item, depth, dealId, authFetch, onRefresh }) {
+  const [creating, setCreating] = React.useState(false);
+  const [newName, setNewName]   = React.useState("");
+  const [saving, setSaving]     = React.useState(false);
+  const [open, setOpen]         = React.useState(depth < 2); // pastas de 1º nível já abertas
+
+  const isFolder = item.type === "folder";
+  const children = item.children || [];
+  const indent   = depth * 14;
+
+  const submitFolder = async () => {
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      await authFetch(`/api/deals/${dealId}/drive-folder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parent_id: item.id, name: newName.trim() }),
+      });
+      setNewName(""); setCreating(false);
+      onRefresh();
+    } catch (e) { alert("Erro ao criar pasta: " + e.message); }
+    finally { setSaving(false); }
+  };
+
+  if (!isFolder) return (
+    <a href={item.link} target="_blank" rel="noopener noreferrer"
+      className="flex items-center gap-2 px-3 py-1.5 text-[12px]"
+      style={{ marginLeft: indent, textDecoration: "none", color: "var(--text)", borderTop: "1px solid var(--border)" }}>
+      <span style={{ color: "#8592AA" }}><IcoFile /></span>
+      <span className="flex-1 truncate">{item.name}</span>
+      <span style={{ color: "#8592AA" }}><IcoExt /></span>
+    </a>
+  );
+
+  return (
+    <div>
+      {/* Cabeçalho da pasta */}
+      <div className="flex items-center gap-2 px-3 py-2 cursor-pointer"
+        style={{ marginLeft: indent, background: depth === 0 ? "var(--surface-2)" : "rgba(238,241,246,0.5)",
+                 borderTop: depth > 0 ? "1px solid var(--border)" : "none" }}
+        onClick={() => setOpen(o => !o)}>
+        <span style={{ color: "#8592AA", transform: open ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", display: "inline-flex" }}>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </span>
+        <span style={{ color: "#8592AA" }}><IcoFolder /></span>
+        <a href={item.link} target="_blank" rel="noopener noreferrer"
+          className="flex-1 text-[11px] font-medium uppercase tracking-[0.06em]"
+          style={{ color: "var(--text-2)", textDecoration: "none" }}
+          onClick={e => e.stopPropagation()}>
+          {item.name}
+        </a>
+        {/* Botão nova subpasta */}
+        <button className="text-[10px] px-2 py-0.5 rounded font-medium"
+          style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6", flexShrink: 0 }}
+          onClick={e => { e.stopPropagation(); setCreating(c => !c); setOpen(true); }}>
+          + pasta
+        </button>
+      </div>
+
+      {/* Conteúdo expandível */}
+      {open && (
+        <div>
+          {/* Formulário criar subpasta */}
+          {creating && (
+            <div className="flex items-center gap-2 px-3 py-2" style={{ marginLeft: indent + 14, borderTop: "1px solid var(--border)", background: "var(--surface)" }}>
+              <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") submitFolder(); if (e.key === "Escape") setCreating(false); }}
+                placeholder="Nome da pasta…"
+                className="flex-1 text-[12px] px-2 py-1 rounded"
+                style={{ border: "1px solid var(--border)", outline: "none", background: "var(--surface)" }} />
+              <button onClick={submitFolder} disabled={saving}
+                className="text-[11px] px-2 py-1 rounded font-medium"
+                style={{ background: "#3B5279", color: "#fff" }}>
+                {saving ? "…" : "Criar"}
+              </button>
+              <button onClick={() => setCreating(false)} className="text-[11px] px-1" style={{ color: "var(--text-2)" }}>✕</button>
+            </div>
+          )}
+          {/* Filhos */}
+          {children.length === 0 && !creating && (
+            <div className="px-3 py-1.5 text-[11px]"
+              style={{ marginLeft: indent + 14, color: "var(--text-2)", borderTop: "1px solid var(--border)" }}>
+              Vazio
+            </div>
+          )}
+          {children.map(child => (
+            <DriveItem key={child.id} item={child} depth={depth + 1} dealId={dealId} authFetch={authFetch} onRefresh={onRefresh} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FilesTab({ deal, authFetch }) {
-  const [data, setData]       = React.useState(null);
+  const [data, setData]     = React.useState(null);
   const [loading, setLoading] = React.useState(false);
-  const [uploading, setUploading] = React.useState(null); // nome da pasta em upload
+  const [creating, setCreating] = React.useState(false); // nova pasta na raiz
+  const [newName, setNewName]   = React.useState("");
+  const [saving, setSaving]     = React.useState(false);
 
   const dealId = deal && deal.id;
 
@@ -979,46 +1095,24 @@ function FilesTab({ deal, authFetch }) {
 
   React.useEffect(() => { load(); }, [dealId]);
 
-  const handleUpload = async (folderName, file) => {
-    if (!file) return;
-    setUploading(folderName);
-    const fd = new FormData();
-    fd.append("folder_name", folderName);
-    fd.append("file", file);
+  const submitRootFolder = async () => {
+    if (!newName.trim() || !data || !data.main_id) return;
+    setSaving(true);
     try {
-      const r = await authFetch(`/api/deals/${dealId}/drive-upload`, { method: "POST", body: fd });
-      if (!r.ok) { const e = await r.json().catch(() => ({})); alert("Erro: " + (e.detail || r.status)); }
-      else load();
-    } catch (e) {
-      alert("Erro no upload: " + e.message);
-    } finally {
-      setUploading(null);
-    }
+      await authFetch(`/api/deals/${dealId}/drive-folder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parent_id: data.main_id, name: newName.trim() }),
+      });
+      setNewName(""); setCreating(false);
+      load();
+    } catch (e) { alert("Erro ao criar pasta: " + e.message); }
+    finally { setSaving(false); }
   };
 
-  // ---- ícones inline ----
-  const IcoFolder = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-    </svg>
-  );
-  const IcoFile = () => (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-    </svg>
-  );
-  const IcoExt = () => (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-    </svg>
-  );
-
-  // Deal ainda não salvo — sem ID
   if (!dealId) return (
-    <div className="flex flex-col gap-3 py-2">
-      <div className="text-[12px] px-3 py-3 rounded-lg" style={{ color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-        As pastas do Google Drive serão criadas automaticamente ao salvar o deal.
-      </div>
+    <div className="text-[12px] px-3 py-3 rounded-lg mt-1" style={{ color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+      As pastas do Google Drive serão criadas automaticamente ao salvar o deal.
     </div>
   );
 
@@ -1026,69 +1120,61 @@ function FilesTab({ deal, authFetch }) {
     <div className="text-[12px] px-3 py-3" style={{ color: "var(--text-2)" }}>Carregando arquivos…</div>
   );
 
-  if (!data || (!data.main_link && (!data.folders || data.folders.length === 0))) return (
-    <div className="flex flex-col gap-3 py-2">
-      <div className="text-[12px] px-3 py-3 rounded-lg" style={{ color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-        Pasta do Drive ainda não criada para este deal. Deals novos recebem as pastas automaticamente.
-      </div>
+  if (!data || !data.main_link) return (
+    <div className="text-[12px] px-3 py-3 rounded-lg mt-1" style={{ color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+      Pasta do Drive ainda não criada para este deal.
     </div>
   );
+
+  const items = data.items || [];
 
   return (
     <div className="flex flex-col gap-2">
       {/* Pasta principal */}
-      {data.main_link && (
+      <div className="flex items-center gap-2">
         <a href={data.main_link} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-3 px-4 py-3 rounded-lg mb-1"
+          className="flex-1 flex items-center gap-3 px-4 py-3 rounded-lg"
           style={{ background: "rgba(59,82,121,0.06)", border: "1px solid #D6DCE6", textDecoration: "none", color: "#3B5279" }}>
           <IcoFolder />
           <span className="flex-1 text-[12px] font-semibold">📁 {deal.produto || "Pasta do Deal"}</span>
           <IcoExt />
         </a>
+        <button onClick={() => { setCreating(c => !c); setNewName(""); }}
+          className="text-[11px] px-3 py-2 rounded font-medium"
+          style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6", whiteSpace: "nowrap" }}>
+          + Pasta
+        </button>
+      </div>
+
+      {/* Form nova pasta na raiz */}
+      {creating && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
+          <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submitRootFolder(); if (e.key === "Escape") setCreating(false); }}
+            placeholder="Nome da nova pasta…"
+            className="flex-1 text-[12px] px-2 py-1 rounded"
+            style={{ border: "1px solid var(--border)", outline: "none" }} />
+          <button onClick={submitRootFolder} disabled={saving}
+            className="text-[11px] px-3 py-1.5 rounded font-medium"
+            style={{ background: "#3B5279", color: "#fff" }}>
+            {saving ? "…" : "Criar"}
+          </button>
+          <button onClick={() => setCreating(false)} style={{ color: "var(--text-2)" }}>✕</button>
+        </div>
       )}
 
-      {/* Subpastas com arquivos */}
-      {(data.folders || []).map(folder => (
-        <div key={folder.name} className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-          {/* Cabeçalho da subpasta */}
-          <div className="flex items-center gap-2 px-3 py-2"
-            style={{ background: "var(--surface-2)", borderBottom: folder.files.length > 0 ? "1px solid var(--border)" : "none" }}>
-            <span style={{ color: "#8592AA" }}><IcoFolder /></span>
-            <span className="flex-1 text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--text-2)" }}>
-              {folder.folder_link
-                ? <a href={folder.folder_link} target="_blank" rel="noopener noreferrer"
-                    style={{ textDecoration: "none", color: "inherit" }}>{folder.name}</a>
-                : folder.name}
-            </span>
-            <label className="cursor-pointer flex items-center gap-1 text-[10px] px-2 py-1 rounded font-medium"
-              style={{ background: uploading === folder.name ? "var(--border)" : "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6",
-                       opacity: uploading ? 0.7 : 1, pointerEvents: uploading ? "none" : "auto" }}>
-              {uploading === folder.name ? "Enviando…" : "+ Arquivo"}
-              <input type="file" className="hidden" disabled={!!uploading}
-                onChange={e => { const f = e.target.files[0]; if (f) handleUpload(folder.name, f); e.target.value = ""; }} />
-            </label>
-          </div>
-
-          {/* Lista de arquivos */}
-          {folder.files.length === 0 ? (
-            <div className="px-3 py-2 text-[11px]" style={{ color: "var(--text-2)" }}>Nenhum arquivo</div>
-          ) : (
-            <div className="flex flex-col">
-              {folder.files.map((file, i) => (
-                <a key={file.id} href={file.link} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-2 text-[12px]"
-                  style={{ textDecoration: "none", color: "var(--text)",
-                           borderTop: i > 0 ? "1px solid var(--border)" : "none",
-                           background: "var(--surface)" }}>
-                  <span style={{ color: "#8592AA" }}><IcoFile /></span>
-                  <span className="flex-1 truncate">{file.name}</span>
-                  <span style={{ color: "#8592AA" }}><IcoExt /></span>
-                </a>
-              ))}
-            </div>
-          )}
+      {/* Árvore de pastas e arquivos */}
+      {items.length === 0 ? (
+        <div className="text-[12px] px-3 py-2 rounded-lg" style={{ color: "var(--text-2)", background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+          Nenhuma pasta ou arquivo encontrado.
         </div>
-      ))}
+      ) : (
+        <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+          {items.map(item => (
+            <DriveItem key={item.id} item={item} depth={0} dealId={dealId} authFetch={authFetch} onRefresh={load} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

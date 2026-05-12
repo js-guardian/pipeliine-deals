@@ -1,4 +1,3 @@
-import io
 import os
 import json
 import math
@@ -7,7 +6,7 @@ from functools import lru_cache
 
 import jwt
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -47,7 +46,6 @@ def _extract_folder_id(url: str) -> str:
 def _create_folder(service, name: str, parent_id: str) -> dict:
     meta = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]}
     f = service.files().create(body=meta, fields="id,webViewLink").execute()
-    # tornar visível para qualquer um com o link
     service.permissions().create(fileId=f["id"], body={"type": "anyone", "role": "reader"}).execute()
     return f
 
@@ -541,94 +539,73 @@ def create_deal(payload: DealPayload, _: dict = Depends(require_auth)):
     return row_to_deal(dict(df.iloc[0]))
 
 
+def _list_folder_contents(service, folder_id: str) -> list:
+    """Lista recursivamente (2 níveis) arquivos e subpastas de uma pasta do Drive."""
+    try:
+        res = service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            fields="files(id,name,webViewLink,mimeType)",
+            orderBy="name",
+            pageSize=200,
+        ).execute()
+    except Exception as e:
+        print(f"[DRIVE] Erro ao listar pasta {folder_id}: {e}")
+        return []
+
+    items = []
+    for f in res.get("files", []):
+        is_folder = f.get("mimeType") == "application/vnd.google-apps.folder"
+        entry = {"id": f["id"], "name": f["name"], "link": f["webViewLink"], "type": "folder" if is_folder else "file"}
+        if is_folder:
+            # um nível a mais dentro da subpasta
+            entry["children"] = _list_folder_contents(service, f["id"])
+        items.append(entry)
+    return items
+
+
 @app.get("/api/deals/{deal_id}/drive-files")
 def get_drive_files(deal_id: int, _: dict = Depends(require_auth)):
-    """Lista arquivos de cada subpasta do Drive para o deal."""
+    """Lê ao vivo a pasta do Drive do deal — inclui subpastas criadas manualmente."""
     df = read_table("SELECT drive_folders FROM pipe_deals WHERE id = :id", {"id": deal_id})
     if df.empty:
         raise HTTPException(status_code=404, detail="Deal não encontrado")
     row = dict(df.iloc[0])
     if not row.get("drive_folders"):
-        return {"folders": [], "main_link": None}
+        return {"main_link": None, "main_id": None, "items": []}
     try:
         links = json.loads(row["drive_folders"])
     except Exception:
-        return {"folders": [], "main_link": None}
+        return {"main_link": None, "main_id": None, "items": []}
 
+    main_link = links.get("_main")
+    if not main_link:
+        return {"main_link": None, "main_id": None, "items": []}
+
+    main_id = _extract_folder_id(main_link)
     service = _get_drive_service()
     if not service:
         raise HTTPException(status_code=500, detail="Serviço Drive indisponível")
 
-    result = []
-    for name in _DRIVE_SUBFOLDERS:
-        folder_url = links.get(name)
-        if not folder_url:
-            result.append({"name": name, "folder_link": None, "files": []})
-            continue
-        folder_id = _extract_folder_id(folder_url)
-        try:
-            res = service.files().list(
-                q=f"'{folder_id}' in parents and trashed=false",
-                fields="files(id,name,webViewLink,mimeType)",
-                pageSize=100,
-            ).execute()
-            files = [
-                {"id": f["id"], "name": f["name"], "link": f["webViewLink"]}
-                for f in res.get("files", [])
-            ]
-        except Exception as e:
-            print(f"[DRIVE] Erro ao listar '{name}': {e}")
-            files = []
-        result.append({"name": name, "folder_link": folder_url, "files": files})
-
-    return {"folders": result, "main_link": links.get("_main")}
+    items = _list_folder_contents(service, main_id)
+    return {"main_link": main_link, "main_id": main_id, "items": items}
 
 
-@app.post("/api/deals/{deal_id}/drive-upload")
-async def upload_drive_file(
-    deal_id: int,
-    folder_name: str = Form(...),
-    file: UploadFile = File(...),
-    _: dict = Depends(require_auth),
-):
-    """Faz upload de um arquivo para uma subpasta do Drive do deal."""
-    df = read_table("SELECT drive_folders FROM pipe_deals WHERE id = :id", {"id": deal_id})
-    if df.empty:
-        raise HTTPException(status_code=404, detail="Deal não encontrado")
-    row = dict(df.iloc[0])
-    if not row.get("drive_folders"):
-        raise HTTPException(status_code=400, detail="Pastas Drive não criadas para este deal")
-    try:
-        links = json.loads(row["drive_folders"])
-    except Exception:
-        raise HTTPException(status_code=400, detail="drive_folders inválido")
+class FolderPayload(BaseModel):
+    parent_id: str
+    name: str
 
-    folder_url = links.get(folder_name)
-    if not folder_url:
-        raise HTTPException(status_code=400, detail=f"Subpasta '{folder_name}' não encontrada")
-
-    folder_id = _extract_folder_id(folder_url)
+@app.post("/api/deals/{deal_id}/drive-folder")
+def create_drive_folder(deal_id: int, payload: FolderPayload, _: dict = Depends(require_auth)):
+    """Cria uma nova pasta dentro da estrutura de Drive do deal."""
     service = _get_drive_service()
     if not service:
         raise HTTPException(status_code=500, detail="Serviço Drive indisponível")
-
     try:
-        from googleapiclient.http import MediaIoBaseUpload
-        content = await file.read()
-        media = MediaIoBaseUpload(
-            io.BytesIO(content),
-            mimetype=file.content_type or "application/octet-stream",
-            resumable=False,
-        )
-        meta = {"name": file.filename, "parents": [folder_id]}
-        created = service.files().create(body=meta, media_body=media, fields="id,webViewLink,name").execute()
-        service.permissions().create(
-            fileId=created["id"], body={"type": "anyone", "role": "reader"}
-        ).execute()
-        return {"id": created["id"], "name": created["name"], "link": created["webViewLink"]}
+        folder = _create_folder(service, payload.name.strip(), payload.parent_id)
+        return {"id": folder["id"], "name": payload.name.strip(), "link": folder["webViewLink"], "type": "folder", "children": []}
     except Exception as e:
-        print(f"[DRIVE] Erro ao fazer upload: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro no upload: {str(e)}")
+        print(f"[DRIVE] Erro ao criar pasta: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao criar pasta: {str(e)}")
 
 
 @app.put("/api/deals/{deal_id}")
