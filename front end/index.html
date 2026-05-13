@@ -861,16 +861,24 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
     e.stopPropagation();
     const fi = filtered.findIndex(d => d.id === dealId);
     if (fi === -1 || fi + dir < 0 || fi + dir >= filtered.length) return;
-    const other = filtered[fi + dir];
-    const next = [...deals];
-    const ia = next.findIndex(d => d.id === dealId);
-    const ib = next.findIndex(d => d.id === other.id);
-    [next[ia], next[ib]] = [next[ib], next[ia]];
-    setDeals(next);
+
+    // swap na lista filtrada (visível)
+    const newFiltered = [...filtered];
+    [newFiltered[fi], newFiltered[fi + dir]] = [newFiltered[fi + dir], newFiltered[fi]];
+
+    // ordena completo: filtrados (nova ordem) + não-filtrados ao final (ordem original)
+    const filteredIds = new Set(newFiltered.map(d => d.id));
+    const rest = deals.filter(d => !filteredIds.has(d.id));
+    const fullOrdered = [...newFiltered, ...rest];
+
+    // atribui sort_order explícito a todos para persistir
+    const withOrder = fullOrdered.map((d, i) => ({ ...d, sort_order: i }));
+    setDeals(withOrder);
+
     authFetch("/api/deals/reorder", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: next.map(d => d.id) }),
+      body: JSON.stringify({ ids: withOrder.map(d => d.id) }),
     });
   };
 
@@ -898,6 +906,17 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
         if (fMes.length > 0 && (!d.created_at || !fMes.includes(d.created_at.slice(0, 7)))) return false;
         return true;
       })
+      .sort((a, b) => {
+        const ao = a.sort_order ?? null;
+        const bo = b.sort_order ?? null;
+        // se ambos têm sort_order manual, usa ele
+        if (ao !== null && bo !== null) return ao - bo;
+        // se só um tem, o manual vem primeiro
+        if (ao !== null) return -1;
+        if (bo !== null) return 1;
+        // nenhum tem → ordem natural por status
+        return STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
+      });
   }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF, fBroker, fMes]);
 
   return (
