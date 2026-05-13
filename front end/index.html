@@ -857,6 +857,23 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
     setDeals(ds => ds.filter(d => d.id !== dealId));
   };
 
+  const move = (e, dealId, dir) => {
+    e.stopPropagation();
+    const fi = filtered.findIndex(d => d.id === dealId);
+    if (fi === -1 || fi + dir < 0 || fi + dir >= filtered.length) return;
+    const other = filtered[fi + dir];
+    const next = [...deals];
+    const ia = next.findIndex(d => d.id === dealId);
+    const ib = next.findIndex(d => d.id === other.id);
+    [next[ia], next[ib]] = [next[ib], next[ia]];
+    setDeals(next);
+    authFetch("/api/deals/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: next.map(d => d.id) }),
+    });
+  };
+
   const cidadeOpts = useMemo(() => [...new Set(deals.map(d => d.cidade).filter(Boolean))].sort(), [deals]);
   const brokerOpts = useMemo(() => [...new Set(deals.map(d => d.nome_broker).filter(Boolean))].sort(), [deals]);
   const mesOpts = useMemo(() => {
@@ -881,7 +898,6 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
         if (fMes.length > 0 && (!d.created_at || !fMes.includes(d.created_at.slice(0, 7)))) return false;
         return true;
       })
-      .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
   }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF, fBroker, fMes]);
 
   return (
@@ -937,6 +953,7 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
         <table className="text-[13px]" style={{ minWidth: 1800 }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--surface)" }}>
             <tr style={{ color: "var(--text-2)", borderBottom: "1px solid var(--border)" }}>
+              <th className="px-2 py-2.5" style={{ width: 36 }}></th>
               <th className="text-left font-medium px-4 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 180 }}>Produto</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]" style={{ minWidth: 220 }}>Status</th>
               <th className="text-left font-medium px-3 py-2.5 text-[11px] uppercase tracking-[0.08em]">Resp.</th>
@@ -967,11 +984,25 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
                 Nenhum deal encontrado com os filtros aplicados.
               </td></tr>
             )}
-            {filtered.map(d => (
+            {filtered.map((d, fi) => (
               <tr key={d.id}
                   onClick={() => openDrawer(d.id)}
                   className={`group row-hover cursor-pointer ${selectedId === d.id ? "row-selected" : ""}`}
                   style={{ borderTop: "1px solid var(--border)" }}>
+                <td className="px-2 py-3 text-center" onClick={e => e.stopPropagation()}>
+                  <div className="flex flex-col items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={e => move(e, d.id, -1)} disabled={fi === 0}
+                      className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
+                      style={{ color: "var(--text-2)", lineHeight: 1 }} title="Mover para cima">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                    </button>
+                    <button onClick={e => move(e, d.id, 1)} disabled={fi === filtered.length - 1}
+                      className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
+                      style={{ color: "var(--text-2)", lineHeight: 1 }} title="Mover para baixo">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                  </div>
+                </td>
                 <td className="px-4 py-3" style={{ fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap" }}>{d.produto}</td>
                 <td className="px-3 py-3" style={{ whiteSpace: "nowrap" }}><StatusBadge status={d.status} /></td>
                 <td className="px-3 py-3"><RespBadge r={d.responsavel} /></td>

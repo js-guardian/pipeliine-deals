@@ -98,6 +98,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def run_migrations():
+    try:
+        with get_engine().begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE pipe_deals ADD COLUMN IF NOT EXISTS sort_order INTEGER"
+            ))
+        print("[MIGRATE] sort_order column ensured.")
+    except Exception as e:
+        print(f"[MIGRATE] {e}")
+
 # ---------- AUTH ----------
 _SUPABASE_URL        = "https://varkabkouznhupdisdcg.supabase.co"
 _SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
@@ -186,6 +197,7 @@ def row_to_deal(row: dict) -> dict:
         "drive_folders": row.get("drive_folders"),
         "created_at": created_at.isoformat() if created_at else None,
         "updated_at": updated_at.isoformat() if updated_at else None,
+        "sort_order": row.get("sort_order"),
         "preco_pedido": None,
         "ocupacao": None,
     }
@@ -204,8 +216,25 @@ def serve_frontend():
 
 @app.get("/api/deals")
 def list_deals(_: dict = Depends(require_auth)):
-    df = read_table("SELECT * FROM pipe_deals ORDER BY created_at DESC")
+    df = read_table("SELECT * FROM pipe_deals ORDER BY sort_order ASC NULLS LAST, created_at DESC")
     return [row_to_deal(dict(row)) for _, row in df.iterrows()]
+
+
+class ReorderPayload(BaseModel):
+    ids: list[int]
+
+@app.patch("/api/deals/reorder")
+def reorder_deals(payload: ReorderPayload, _: dict = Depends(require_auth)):
+    try:
+        with get_engine().begin() as conn:
+            for i, deal_id in enumerate(payload.ids):
+                conn.execute(
+                    text("UPDATE pipe_deals SET sort_order = :order WHERE id = :id"),
+                    {"order": i, "id": deal_id},
+                )
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------- PORTFOLIO ----------
