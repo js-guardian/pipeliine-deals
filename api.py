@@ -216,7 +216,16 @@ def serve_frontend():
 
 @app.get("/api/deals")
 def list_deals(_: dict = Depends(require_auth)):
-    df = read_table("SELECT * FROM pipe_deals ORDER BY sort_order ASC NULLS LAST, created_at DESC")
+    try:
+        df = read_table("SELECT * FROM pipe_deals ORDER BY sort_order ASC NULLS LAST, created_at DESC")
+    except Exception:
+        # coluna sort_order ainda não existe — garante ela e usa fallback
+        try:
+            with get_engine().begin() as conn:
+                conn.execute(text("ALTER TABLE pipe_deals ADD COLUMN IF NOT EXISTS sort_order INTEGER"))
+        except Exception:
+            pass
+        df = read_table("SELECT * FROM pipe_deals ORDER BY created_at DESC")
     return [row_to_deal(dict(row)) for _, row in df.iterrows()]
 
 
