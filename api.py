@@ -229,17 +229,21 @@ def list_deals(_: dict = Depends(require_auth)):
     return [row_to_deal(dict(row)) for _, row in df.iterrows()]
 
 
+class SortUpdate(BaseModel):
+    id: int
+    sort_order: int
+
 class ReorderPayload(BaseModel):
-    ids: list[int]
+    updates: list[SortUpdate]
 
 @app.patch("/api/deals/reorder")
 def reorder_deals(payload: ReorderPayload, _: dict = Depends(require_auth)):
     try:
         with get_engine().begin() as conn:
-            for i, deal_id in enumerate(payload.ids):
+            for u in payload.updates:
                 conn.execute(
                     text("UPDATE pipe_deals SET sort_order = :order WHERE id = :id"),
-                    {"order": i, "id": deal_id},
+                    {"order": u.sort_order, "id": u.id},
                 )
         return {"ok": True}
     except Exception as e:

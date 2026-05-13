@@ -887,10 +887,14 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
     });
 
     setDeals(nextDeals);
+    // envia apenas os deals do status afetado com seus novos sort_orders
+    const updates = nextDeals
+      .filter(d => d.status === myStatus)
+      .map(d => ({ id: d.id, sort_order: d.sort_order }));
     authFetch("/api/deals/reorder", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: nextDeals.map(d => d.id) }),
+      body: JSON.stringify({ updates }),
     });
   };
 
