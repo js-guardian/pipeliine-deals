@@ -865,25 +865,32 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
   const move = (e, dealId, dir) => {
     e.stopPropagation();
     const fi = filtered.findIndex(d => d.id === dealId);
-    if (fi === -1 || fi + dir < 0 || fi + dir >= filtered.length) return;
+    if (fi === -1) return;
+    const myStatus = filtered[fi].status;
 
-    // swap na lista filtrada (visível)
+    // acha o adjacente do mesmo status na direção pedida
+    let ti = fi + dir;
+    while (ti >= 0 && ti < filtered.length && filtered[ti].status !== myStatus) ti += dir;
+    if (ti < 0 || ti >= filtered.length) return;
+
+    // swap nos dois deals dentro do grupo de status
     const newFiltered = [...filtered];
-    [newFiltered[fi], newFiltered[fi + dir]] = [newFiltered[fi + dir], newFiltered[fi]];
+    [newFiltered[fi], newFiltered[ti]] = [newFiltered[ti], newFiltered[fi]];
 
-    // ordena completo: filtrados (nova ordem) + não-filtrados ao final (ordem original)
-    const filteredIds = new Set(newFiltered.map(d => d.id));
-    const rest = deals.filter(d => !filteredIds.has(d.id));
-    const fullOrdered = [...newFiltered, ...rest];
+    // atribui sort_order apenas para deals do mesmo status, usando base por grupo
+    const base = STATUS_ORDER.indexOf(myStatus) * 10000;
+    let localIdx = 0;
+    const nextDeals = deals.map(d => {
+      if (d.status !== myStatus) return d;
+      const pos = newFiltered.findIndex(f => f.id === d.id);
+      return { ...d, sort_order: base + (pos >= 0 ? pos : localIdx++) };
+    });
 
-    // atribui sort_order explícito a todos para persistir
-    const withOrder = fullOrdered.map((d, i) => ({ ...d, sort_order: i }));
-    setDeals(withOrder);
-
+    setDeals(nextDeals);
     authFetch("/api/deals/reorder", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: withOrder.map(d => d.id) }),
+      body: JSON.stringify({ ids: nextDeals.map(d => d.id) }),
     });
   };
 
@@ -912,15 +919,17 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
         return true;
       })
       .sort((a, b) => {
+        // STATUS_ORDER é SEMPRE primário — nunca pode ser quebrado
+        const sa = STATUS_ORDER.indexOf(a.status);
+        const sb = STATUS_ORDER.indexOf(b.status);
+        if (sa !== sb) return sa - sb;
+        // dentro do mesmo status: sort_order manual (se definido)
         const ao = a.sort_order ?? null;
         const bo = b.sort_order ?? null;
-        // se ambos têm sort_order manual, usa ele
         if (ao !== null && bo !== null) return ao - bo;
-        // se só um tem, o manual vem primeiro
         if (ao !== null) return -1;
         if (bo !== null) return 1;
-        // nenhum tem → ordem natural por status
-        return STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
+        return 0;
       });
   }, [deals, q, fStatus, fResp, fPerfil, fCidade, fUF, fBroker, fMes]);
 
@@ -1015,16 +1024,22 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
                   style={{ borderTop: "1px solid var(--border)" }}>
                 <td className="px-2 py-3 text-center" onClick={e => e.stopPropagation()}>
                   <div className="flex flex-col items-center gap-0.5">
-                    <button onClick={e => move(e, d.id, -1)} disabled={fi === 0}
-                      className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
-                      style={{ color: "var(--text-2)", lineHeight: 1, opacity: fi === 0 ? 0.2 : 0.5 }} title="Mover para cima">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                    </button>
-                    <button onClick={e => move(e, d.id, 1)} disabled={fi === filtered.length - 1}
-                      className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
-                      style={{ color: "var(--text-2)", lineHeight: 1, opacity: fi === filtered.length - 1 ? 0.2 : 0.5 }} title="Mover para baixo">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                    </button>
+                    {(() => {
+                      const hasPrev = filtered.slice(0, fi).some(x => x.status === d.status);
+                      const hasNext = filtered.slice(fi + 1).some(x => x.status === d.status);
+                      return (<>
+                        <button onClick={e => move(e, d.id, -1)} disabled={!hasPrev}
+                          className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
+                          style={{ color: "var(--text-2)", lineHeight: 1, opacity: hasPrev ? 0.5 : 0.2 }} title="Mover para cima">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button onClick={e => move(e, d.id, 1)} disabled={!hasNext}
+                          className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
+                          style={{ color: "var(--text-2)", lineHeight: 1, opacity: hasNext ? 0.5 : 0.2 }} title="Mover para baixo">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                      </>);
+                    })()}
                   </div>
                 </td>
                 <td className="px-4 py-3" style={{ fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap" }}>{d.produto}</td>
