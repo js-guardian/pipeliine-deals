@@ -159,19 +159,22 @@ const STATUS_ORDER = [
   "CONDIÇÕES COMERCIAIS FECHADAS",
   "NEGOCIAÇÕES EM ANDAMENTO",
   "OPORTUNIDADES RECEBIDAS",
+  "ON HOLD",
   "OPORTUNIDADES DESCARTADAS",
 ];
 const STATUS = {
   "CONDIÇÕES COMERCIAIS FECHADAS": "#3B5279",
   "NEGOCIAÇÕES EM ANDAMENTO":      "#4E95D9",
   "OPORTUNIDADES RECEBIDAS":       "#8592AA",
+  "ON HOLD":                       "#D4820A",
   "OPORTUNIDADES DESCARTADAS":     "#AFABAB",
 };
 const STATUS_SHORT = {
   "CONDIÇÕES COMERCIAIS FECHADAS": "FECHADO",
-  "NEGOCIAÇÕES EM ANDAMENTO": "NEGOC.",
-  "OPORTUNIDADES RECEBIDAS": "OPORT.",
-  "OPORTUNIDADES DESCARTADAS": "DESCART.",
+  "NEGOCIAÇÕES EM ANDAMENTO":      "NEGOC.",
+  "OPORTUNIDADES RECEBIDAS":       "OPORT.",
+  "ON HOLD":                       "ON HOLD",
+  "OPORTUNIDADES DESCARTADAS":     "DESCART.",
 };
 
 const PERFIL_COLORS = {
@@ -195,7 +198,7 @@ const TIPOLOGIA_COLORS = {
   "SHOPPING":     "#2F5597",
   "OUTROS":       "#AFABAB",
 };
-const PERFIL_OPTS = ["LOGISTICA","OFFICE","INDUSTRIAL","RENDA URBANA","GALPÃO","MISTO","PORTFOLIO"];
+const PERFIL_OPTS = ["LOGISTICA","OFFICE","INDUSTRIAL","RENDA URBANA","GALPÃO","HOSPITAL","MISTO","PORTFOLIO"];
 const ESTRATEGIA_OPTS = ["COTAS","CASH","CETIPADO"];
 const VEICULO_OPTS = ["GARE","CETIPADO","DIRETO"];
 const VENDEDOR_OPTS = ["FUNDO","BROKER","CONSULTORIA","PROPRIETÁRIO DIRETO","OUTRO"];
@@ -854,6 +857,7 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
   const [fUF, setFUF] = useState([]);
   const [fBroker, setFBroker] = useState([]);
   const [fMes, setFMes] = useState([]);
+  const [posInput, setPosInput] = useState(null); // { dealId, value } — posição sendo editada
 
   const handleDelete = async (e, dealId) => {
     e.stopPropagation();
@@ -862,35 +866,30 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
     setDeals(ds => ds.filter(d => d.id !== dealId));
   };
 
-  const move = (e, dealId, dir) => {
-    e.stopPropagation();
-    const fi = filtered.findIndex(d => d.id === dealId);
-    if (fi === -1) return;
-    const myStatus = filtered[fi].status;
+  const moveTo = (dealId, targetPos1based) => {
+    const myStatus = deals.find(d => d.id === dealId)?.status;
+    if (!myStatus) return;
+    const group = filtered.filter(d => d.status === myStatus);
+    const fromIdx = group.findIndex(d => d.id === dealId);
+    if (fromIdx === -1) return;
+    const toIdx = Math.max(0, Math.min(group.length - 1, targetPos1based - 1));
+    if (fromIdx === toIdx) return;
 
-    // acha o adjacente do mesmo status na direção pedida
-    let ti = fi + dir;
-    while (ti >= 0 && ti < filtered.length && filtered[ti].status !== myStatus) ti += dir;
-    if (ti < 0 || ti >= filtered.length) return;
+    const newGroup = [...group];
+    const [item] = newGroup.splice(fromIdx, 1);
+    newGroup.splice(toIdx, 0, item);
 
-    // swap nos dois deals dentro do grupo de status
-    const newFiltered = [...filtered];
-    [newFiltered[fi], newFiltered[ti]] = [newFiltered[ti], newFiltered[fi]];
-
-    // atribui sort_order apenas para deals do mesmo status, usando base por grupo
     const base = STATUS_ORDER.indexOf(myStatus) * 10000;
-    let localIdx = 0;
     const nextDeals = deals.map(d => {
       if (d.status !== myStatus) return d;
-      const pos = newFiltered.findIndex(f => f.id === d.id);
-      return { ...d, sort_order: base + (pos >= 0 ? pos : localIdx++) };
+      const pos = newGroup.findIndex(f => f.id === d.id);
+      if (pos === -1) return d; // deal filtrado fora da view → mantém sort_order
+      return { ...d, sort_order: base + pos };
     });
 
     setDeals(nextDeals);
-    // envia apenas os deals do status afetado com seus novos sort_orders
-    const updates = nextDeals
-      .filter(d => d.status === myStatus)
-      .map(d => ({ id: d.id, sort_order: d.sort_order }));
+    // só envia os deals visíveis do grupo reordenado
+    const updates = newGroup.map((d, i) => ({ id: d.id, sort_order: base + i }));
     authFetch("/api/deals/reorder", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1027,24 +1026,48 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
                   className={`group row-hover cursor-pointer ${selectedId === d.id ? "row-selected" : ""}`}
                   style={{ borderTop: "1px solid var(--border)" }}>
                 <td className="px-2 py-3 text-center" onClick={e => e.stopPropagation()}>
-                  <div className="flex flex-col items-center gap-0.5">
-                    {(() => {
-                      const hasPrev = filtered.slice(0, fi).some(x => x.status === d.status);
-                      const hasNext = filtered.slice(fi + 1).some(x => x.status === d.status);
-                      return (<>
-                        <button onClick={e => move(e, d.id, -1)} disabled={!hasPrev}
-                          className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
-                          style={{ color: "var(--text-2)", lineHeight: 1, opacity: hasPrev ? 0.5 : 0.2 }} title="Mover para cima">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                        </button>
-                        <button onClick={e => move(e, d.id, 1)} disabled={!hasNext}
-                          className="p-0.5 rounded hover:bg-[var(--border)] disabled:opacity-20"
-                          style={{ color: "var(--text-2)", lineHeight: 1, opacity: hasNext ? 0.5 : 0.2 }} title="Mover para baixo">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </button>
-                      </>);
-                    })()}
-                  </div>
+                  {(() => {
+                    const sameGroup = filtered.filter(x => x.status === d.status);
+                    const pos = sameGroup.findIndex(x => x.id === d.id) + 1;
+                    const isEditing = posInput?.dealId === d.id;
+                    if (isEditing) {
+                      return (
+                        <input
+                          autoFocus
+                          type="text"
+                          inputMode="numeric"
+                          className="mono text-center"
+                          style={{ width: 32, fontSize: 11, border: "1px solid #3B5279", borderRadius: 4, padding: "2px 3px", background: "#EEF1F6", color: "#3B5279", outline: "none" }}
+                          value={posInput.value}
+                          onChange={e => setPosInput({ dealId: d.id, value: e.target.value })}
+                          onBlur={() => {
+                            const n = parseInt(posInput.value, 10);
+                            if (!isNaN(n)) moveTo(d.id, n);
+                            setPosInput(null);
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              const n = parseInt(posInput.value, 10);
+                              if (!isNaN(n)) moveTo(d.id, n);
+                              setPosInput(null);
+                            } else if (e.key === "Escape") {
+                              setPosInput(null);
+                            }
+                          }}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      );
+                    }
+                    return (
+                      <span
+                        onClick={e => { e.stopPropagation(); setPosInput({ dealId: d.id, value: String(pos) }); }}
+                        className="mono cursor-pointer rounded inline-block text-center select-none"
+                        style={{ fontSize: 11, color: "var(--text-2)", background: "var(--surface-2)", padding: "2px 6px", border: "1px solid var(--border)", minWidth: 22 }}
+                        title={`Posição ${pos} de ${sameGroup.length} — clique para mover`}>
+                        {pos}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3" style={{ fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap" }}>{d.produto}</td>
                 <td className="px-3 py-3" style={{ whiteSpace: "nowrap" }}><StatusBadge status={d.status} /></td>
@@ -1321,6 +1344,104 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const EMPTY_HIST   = { tipo: "", data_negociacao: todayISO(), valor_aquisicao: "", cap: "", modo_pgto: "", entrada_pct: "", parcelamento: "", notas: "" };
 const EMPTY_CONTRA = { valor_contraproposta: "", cap_contraproposta: "", modo_pgto_contraproposta: "", entrada_percentual_contraproposta: "", parcelamento_contraproposta: "", notas_contraproposta: "" };
 
+// ---------- HISTORICO FORMS (top-level → never remount → inputs keep focus) ----------
+function HistInlineForm({ label, form, upd, save, cancel, saving }) {
+  return (
+    <div className="rounded-lg p-4 flex flex-col gap-3 mt-1" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
+      <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>{label}</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="gp-label">Tipo</label>
+          <select className="gp-select" value={form.tipo || ""} onChange={e => upd("tipo", e.target.value)}>
+            <option value="">Selecione…</option>
+            {HIST_TIPO_OPTS.map(t => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="gp-label">Data</label>
+          <input className="gp-input" type="date" value={form.data_negociacao || ""} onChange={e => upd("data_negociacao", e.target.value)} />
+        </div>
+        <div>
+          <label className="gp-label">Valor Aquisição</label>
+          <CurrencyInput value={form.valor_aquisicao ?? ""} onChange={v => upd("valor_aquisicao", v)} placeholder="R$ 0" />
+        </div>
+        <div>
+          <label className="gp-label">Cap Rate (%)</label>
+          <DecimalInput value={form.cap ?? ""} onChange={v => upd("cap", v)} placeholder="0,00" />
+        </div>
+        <div>
+          <label className="gp-label">Modo Pgto</label>
+          <select className="gp-select" value={form.modo_pgto || ""} onChange={e => upd("modo_pgto", e.target.value)}>
+            <option value="">Selecione…</option>
+            {MODO_PGTO_OPTS.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="gp-label">Entrada (%)</label>
+          <DecimalInput value={form.entrada_pct ?? ""} onChange={v => upd("entrada_pct", v)} placeholder="0,00" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Parcelamento</label>
+          <input className="gp-input" value={form.parcelamento || ""} onChange={e => upd("parcelamento", e.target.value)} placeholder="Descreva o parcelamento…" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Notas</label>
+          <textarea className="gp-textarea" rows={3} value={form.notas || ""} onChange={e => upd("notas", e.target.value)} placeholder="Observações…" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 justify-end mt-1">
+        <button onClick={cancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
+        <button onClick={save} disabled={saving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#3B5279", color: "#fff" }}>
+          {saving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HistContraForm({ cForm, updC, cSave, cCancel, cSaving }) {
+  return (
+    <div className="rounded-lg p-3 mt-1" style={{ background: "rgba(26,159,192,0.04)", border: "1px solid rgba(47,201,255,0.3)" }}>
+      <div className="text-[11px] font-semibold uppercase tracking-wide mb-3" style={{ color: "#1A9FC0" }}>Contraproposta</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="gp-label">Valor</label>
+          <CurrencyInput value={cForm.valor_contraproposta ?? ""} onChange={v => updC("valor_contraproposta", v)} placeholder="R$ 0" />
+        </div>
+        <div>
+          <label className="gp-label">Cap Rate (%)</label>
+          <DecimalInput value={cForm.cap_contraproposta ?? ""} onChange={v => updC("cap_contraproposta", v)} placeholder="0,00" />
+        </div>
+        <div>
+          <label className="gp-label">Modo Pgto</label>
+          <select className="gp-select" value={cForm.modo_pgto_contraproposta || ""} onChange={e => updC("modo_pgto_contraproposta", e.target.value)}>
+            <option value="">Selecione…</option>
+            {MODO_PGTO_OPTS.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="gp-label">Entrada (%)</label>
+          <DecimalInput value={cForm.entrada_percentual_contraproposta ?? ""} onChange={v => updC("entrada_percentual_contraproposta", v)} placeholder="0,00" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Parcelamento</label>
+          <input className="gp-input" value={cForm.parcelamento_contraproposta || ""} onChange={e => updC("parcelamento_contraproposta", e.target.value)} placeholder="Descreva o parcelamento…" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Notas</label>
+          <textarea className="gp-textarea" rows={2} value={cForm.notas_contraproposta || ""} onChange={e => updC("notas_contraproposta", e.target.value)} placeholder="Observações…" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 justify-end mt-2">
+        <button onClick={cCancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
+        <button onClick={cSave} disabled={cSaving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#1A9FC0", color: "#fff" }}>
+          {cSaving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function HistoricoNegTab({ deal, authFetch }) {
   const [items, setItems]           = useState([]);
   const [contraMap, setContraMap]   = useState({}); // { offer_id: [contrapropostas] }
@@ -1476,100 +1597,8 @@ function HistoricoNegTab({ deal, authFetch }) {
     load();
   };
 
-  const ContraForm = ({ offerId }) => (
-    <div className="ml-5 mt-1 rounded-lg p-3 flex flex-col gap-3" style={{ background: "rgba(47,201,255,0.04)", border: "1px solid rgba(47,201,255,0.25)" }}>
-      <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#1A9FC0" }}>
-        {cEditing?.item === "new" ? "Nova Contraproposta" : "Editar Contraproposta"}
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="gp-label">Valor</label>
-          <CurrencyInput value={cForm.valor_contraproposta ?? ""} onChange={v => updC("valor_contraproposta", v)} placeholder="0" />
-        </div>
-        <div>
-          <label className="gp-label">Cap Rate (%)</label>
-          <DecimalInput value={cForm.cap_contraproposta ?? ""} onChange={v => updC("cap_contraproposta", v)} placeholder="Ex: 8,83" />
-        </div>
-        <div>
-          <label className="gp-label">Modo Pgto</label>
-          <select className="gp-select" value={cForm.modo_pgto_contraproposta || ""} onChange={e => updC("modo_pgto_contraproposta", e.target.value)}>
-            <option value="">Selecione…</option>
-            {MODO_PGTO_OPTS.map(m => <option key={m}>{m}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="gp-label">Entrada (%)</label>
-          <DecimalInput value={cForm.entrada_percentual_contraproposta ?? ""} onChange={v => updC("entrada_percentual_contraproposta", v)} placeholder="Ex: 90" />
-        </div>
-        <div className="col-span-2">
-          <label className="gp-label">Parcelamento</label>
-          <input className="gp-input" value={cForm.parcelamento_contraproposta || ""} onChange={e => updC("parcelamento_contraproposta", e.target.value)} placeholder="Ex: 30% em 24m em cash" />
-        </div>
-        <div className="col-span-2">
-          <label className="gp-label">Notas</label>
-          <textarea className="gp-textarea scrollbar" rows={2} value={cForm.notas_contraproposta || ""} onChange={e => updC("notas_contraproposta", e.target.value)} placeholder="Observações…" />
-        </div>
-      </div>
-      <div className="flex items-center gap-2 justify-end">
-        <button onClick={cCancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
-        <button onClick={cSave} disabled={cSaving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#1A9FC0", color: "#fff" }}>
-          {cSaving ? "Salvando…" : "Salvar"}
-        </button>
-      </div>
-    </div>
-  );
-
-  const InlineForm = ({ label }) => (
-    <div className="rounded-lg p-3 flex flex-col gap-3" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
-      <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>{label}</div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="gp-label">Data</label>
-          <input className="gp-input mono" type="date" value={form.data_negociacao || ""} onChange={e => upd("data_negociacao", e.target.value)} />
-        </div>
-        <div>
-          <label className="gp-label">Tipo</label>
-          <select className="gp-select" value={form.tipo || ""} onChange={e => upd("tipo", e.target.value)}>
-            <option value="">Selecione…</option>
-            {HIST_TIPO_OPTS.map(t => <option key={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="gp-label">Valor Aquisição</label>
-          <CurrencyInput value={form.valor_aquisicao ?? ""} onChange={v => upd("valor_aquisicao", v)} placeholder="0" />
-        </div>
-        <div>
-          <label className="gp-label">Cap Rate (%)</label>
-          <DecimalInput value={form.cap ?? ""} onChange={v => upd("cap", v)} placeholder="Ex: 9,9" />
-        </div>
-        <div>
-          <label className="gp-label">Modo Pgto</label>
-          <select className="gp-select" value={form.modo_pgto || ""} onChange={e => upd("modo_pgto", e.target.value)}>
-            <option value="">Selecione…</option>
-            {MODO_PGTO_OPTS.map(m => <option key={m}>{m}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="gp-label">Entrada (%)</label>
-          <DecimalInput value={form.entrada_pct ?? ""} onChange={v => upd("entrada_pct", v)} placeholder="Ex: 40" />
-        </div>
-        <div className="col-span-2">
-          <label className="gp-label">Parcelamento</label>
-          <input className="gp-input" value={form.parcelamento || ""} onChange={e => upd("parcelamento", e.target.value)} placeholder="Ex: 30% em 24m em cash" />
-        </div>
-        <div className="col-span-2">
-          <label className="gp-label">Notas</label>
-          <textarea className="gp-textarea scrollbar" rows={3} value={form.notas || ""} onChange={e => upd("notas", e.target.value)} placeholder="Observações adicionais…" />
-        </div>
-      </div>
-      <div className="flex items-center gap-2 justify-end">
-        <button onClick={cancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
-        <button onClick={save} disabled={saving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#3B5279", color: "#fff" }}>
-          {saving ? "Salvando…" : "Salvar"}
-        </button>
-      </div>
-    </div>
-  );
+  // InlineForm e ContraForm são componentes top-level (definidos antes desta função)
+  // para evitar remount a cada state change → inputs mantêm foco
 
   const ItemTimeline = ({ colItems, lado }) => {
     const isThisLado = currentLado === lado;
@@ -1627,11 +1656,11 @@ function HistoricoNegTab({ deal, authFetch }) {
                   {item.notas && <div className="text-[11px] pt-1.5" style={{ color: "var(--text-2)", borderTop: item.parcelamento ? "1px solid var(--border)" : "none" }}>{item.notas}</div>}
                 </div>
               </div>
-              {isEditing && <InlineForm label="Editar Registro" />}
+              {isEditing && <HistInlineForm label="Editar Registro" form={form} upd={upd} save={save} cancel={cancel} saving={saving} />}
             </React.Fragment>
           );
         })}
-        {editing === "new" && isThisLado && <InlineForm label="Novo Registro" />}
+        {editing === "new" && isThisLado && <HistInlineForm label="Novo Registro" form={form} upd={upd} save={save} cancel={cancel} saving={saving} />}
         {(!editing || !isThisLado || editing !== "new") && !(editing && editing !== "new" && editing.lado === lado) && (
           <button onClick={() => openNew(lado)} className="flex items-center gap-1.5 text-[12px] px-3 py-2 rounded font-medium self-start mt-1"
             style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
@@ -1750,7 +1779,7 @@ function HistoricoNegTab({ deal, authFetch }) {
                         {c.parcelamento_contraproposta && <div className="text-[11px] mt-1" style={{ color: "var(--text-2)", whiteSpace: "pre-line" }}>{c.parcelamento_contraproposta}</div>}
                         {c.notas_contraproposta        && <div className="text-[11px] mt-1 italic" style={{ color: "var(--text-2)" }}>{c.notas_contraproposta}</div>}
                       </div>
-                      {isEditingC && <ContraForm offerId={item.id} />}
+                      {isEditingC && <HistContraForm cForm={cForm} updC={updC} cSave={cSave} cCancel={cCancel} cSaving={cSaving} />}
                     </React.Fragment>
                   );
                 })}
@@ -1761,16 +1790,16 @@ function HistoricoNegTab({ deal, authFetch }) {
                     <IconPlus size={11}/> Contraproposta
                   </button>
                 )}
-                {cEditing?.item === "new" && cEditing?.offerId === item.id && <ContraForm offerId={item.id} />}
+                {cEditing?.item === "new" && cEditing?.offerId === item.id && <HistContraForm cForm={cForm} updC={updC} cSave={cSave} cCancel={cCancel} cSaving={cSaving} />}
               </div>
             </div>
-            {isEditing && <InlineForm label="Editar Registro" />}
+            {isEditing && <HistInlineForm label="Editar Registro" form={form} upd={upd} save={save} cancel={cancel} saving={saving} />}
           </React.Fragment>
         );
       })}
 
       {/* Form novo registro Guardian */}
-      {editing === "new" && currentLado === "GUARDIAN" && <InlineForm label="Novo Registro" />}
+      {editing === "new" && currentLado === "GUARDIAN" && <HistInlineForm label="Novo Registro" form={form} upd={upd} save={save} cancel={cancel} saving={saving} />}
       {!editing && (
         <button onClick={() => openNew("GUARDIAN")} className="flex items-center gap-1.5 text-[12px] px-3 py-2 rounded font-medium self-start mt-1"
           style={{ background: "#EEF1F6", color: "#3B5279", border: "1px solid #D6DCE6" }}>
@@ -1800,6 +1829,57 @@ function HistoricoNegTab({ deal, authFetch }) {
 
 // ---------- PORTFOLIO TAB ----------
 const TIPOLOGIA_OPTS = Object.keys(TIPOLOGIA_COLORS).filter(k => k !== "OUTROS");
+const UF_OPTS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+
+function PortfolioInlineForm({ label, form, setForm, save, cancel, saving }) {
+  return (
+    <div className="rounded-lg p-4 flex flex-col gap-3" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
+      <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>{label}</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="gp-label">Nome do Imóvel</label>
+          <input className="gp-input" value={form.imovel || ""} onChange={e => setForm(f => ({...f, imovel: e.target.value}))} placeholder="Ex.: Galpão Cajamar A" />
+        </div>
+        <div>
+          <label className="gp-label">Tipologia</label>
+          <select className="gp-select" value={form.perfil || ""} onChange={e => setForm(f => ({...f, perfil: e.target.value}))}>
+            <option value="">Selecione…</option>
+            {TIPOLOGIA_OPTS.map(t => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="gp-label">Aluguel Mensal</label>
+          <CurrencyInput value={form.aluguel ?? ""} onChange={v => setForm(f => ({...f, aluguel: v}))} placeholder="0" />
+        </div>
+        <div>
+          <label className="gp-label">Cidade</label>
+          <input className="gp-input" value={form.cidade || ""} onChange={e => setForm(f => ({...f, cidade: e.target.value}))} placeholder="Ex.: São Paulo" />
+        </div>
+        <div>
+          <label className="gp-label">UF</label>
+          <select className="gp-select" value={form.uf || ""} onChange={e => setForm(f => ({...f, uf: e.target.value}))}>
+            <option value="">UF</option>
+            {UF_OPTS.map(u => <option key={u}>{u}</option>)}
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">Endereço</label>
+          <input className="gp-input" value={form.endereco || ""} onChange={e => setForm(f => ({...f, endereco: e.target.value}))} placeholder="Rua, número" />
+        </div>
+        <div className="col-span-2">
+          <label className="gp-label">ABL (m²)</label>
+          <CurrencyInput value={form.abl ?? ""} onChange={v => setForm(f => ({...f, abl: v}))} placeholder="0" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 justify-end mt-1">
+        <button onClick={cancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
+        <button onClick={save} disabled={saving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#3B5279", color: "#fff" }}>
+          {saving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function PortfolioTab({ deal, authFetch }) {
   const [items, setItems]     = useState([]);
@@ -1864,8 +1944,6 @@ function PortfolioTab({ deal, authFetch }) {
   const totalAluguel = items.reduce((s, i) => s + (i.aluguel || 0), 0);
   const totalAbl     = items.reduce((s, i) => s + (i.abl     || 0), 0);
 
-  const UF_OPTS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
-
   if (loading) return <div className="text-[12px] py-4" style={{ color: "var(--text-2)" }}>Carregando portfólio…</div>;
 
   return (
@@ -1888,115 +1966,62 @@ function PortfolioTab({ deal, authFetch }) {
         </div>
       )}
 
-      {/* Reusable inline form */}
-      {(() => {
-        const InlineForm = ({ label }) => (
-          <div className="rounded-lg p-4 flex flex-col gap-3" style={{ background: "rgba(59,82,121,0.04)", border: "1px solid #D6DCE6" }}>
-            <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#3B5279" }}>{label}</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label className="gp-label">Nome do Imóvel</label>
-                <input className="gp-input" value={form.imovel || ""} onChange={e => setForm(f => ({...f, imovel: e.target.value}))} placeholder="Ex.: Galpão Cajamar A" />
-              </div>
-              <div>
-                <label className="gp-label">Tipologia</label>
-                <select className="gp-select" value={form.perfil || ""} onChange={e => setForm(f => ({...f, perfil: e.target.value}))}>
-                  <option value="">Selecione…</option>
-                  {TIPOLOGIA_OPTS.map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="gp-label">Aluguel Mensal</label>
-                <CurrencyInput value={form.aluguel ?? ""} onChange={v => setForm(f => ({...f, aluguel: v}))} placeholder="0" />
-              </div>
-              <div>
-                <label className="gp-label">Cidade</label>
-                <input className="gp-input" value={form.cidade || ""} onChange={e => setForm(f => ({...f, cidade: e.target.value}))} placeholder="Ex.: São Paulo" />
-              </div>
-              <div>
-                <label className="gp-label">UF</label>
-                <select className="gp-select" value={form.uf || ""} onChange={e => setForm(f => ({...f, uf: e.target.value}))}>
-                  <option value="">UF</option>
-                  {UF_OPTS.map(u => <option key={u}>{u}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className="gp-label">Endereço</label>
-                <input className="gp-input" value={form.endereco || ""} onChange={e => setForm(f => ({...f, endereco: e.target.value}))} placeholder="Rua, número" />
-              </div>
-              <div className="col-span-2">
-                <label className="gp-label">ABL (m²)</label>
-                <CurrencyInput value={form.abl ?? ""} onChange={v => setForm(f => ({...f, abl: v}))} placeholder="0" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 justify-end mt-1">
-              <button onClick={cancel} className="px-3 py-1.5 rounded text-[12px]" style={{ color: "var(--text-2)" }}>Cancelar</button>
-              <button onClick={save} disabled={saving} className="px-4 py-1.5 rounded text-[12px] font-medium" style={{ background: "#3B5279", color: "#fff" }}>
-                {saving ? "Salvando…" : "Salvar"}
-              </button>
-            </div>
-          </div>
-        );
-
-        return (
-          <div className="flex flex-col gap-2">
-            {items.map(item => (
-              <React.Fragment key={item.id}>
-                <div className="rounded-lg p-3" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-[13px] truncate">{item.imovel || "—"}</span>
-                        {item.perfil && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                            style={{ background: `${TIPOLOGIA_COLORS[item.perfil] || "#8592AA"}18`, color: TIPOLOGIA_COLORS[item.perfil] || "#8592AA", border: `1px solid ${TIPOLOGIA_COLORS[item.perfil] || "#8592AA"}30` }}>
-                            {item.perfil}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] mt-1" style={{ color: "var(--text-2)" }}>
-                        {[item.cidade, item.uf].filter(Boolean).join(" / ")}
-                        {item.endereco && <span> · {item.endereco}</span>}
-                      </div>
-                      <div className="flex items-center gap-3 mt-2 flex-wrap">
-                        {item.aluguel != null && (
-                          <span className="mono text-[11px]" style={{ color: "var(--text)" }}>{fmtBRL(item.aluguel)}<span style={{ color: "var(--text-2)" }}>/mês</span></span>
-                        )}
-                        {item.abl != null && (
-                          <span className="mono text-[11px]" style={{ color: "var(--text-2)" }}>{fmtArea(item.abl)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => editing && editing.id === item.id ? cancel() : openEdit(item)}
-                        className="p-1.5 rounded hover:bg-[var(--border)]"
-                        style={{ color: editing && editing.id === item.id ? "#DC2626" : "#3B5279" }} title="Editar">
-                        <IconEdit size={13}/>
-                      </button>
-                      <button onClick={() => remove(item)} className="p-1.5 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }} title="Remover">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
-                        </svg>
-                      </button>
-                    </div>
+      <div className="flex flex-col gap-2">
+        {items.map(item => (
+          <React.Fragment key={item.id}>
+            <div className="rounded-lg p-3" style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-[13px] truncate">{item.imovel || "—"}</span>
+                    {item.perfil && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                        style={{ background: `${TIPOLOGIA_COLORS[item.perfil] || "#8592AA"}18`, color: TIPOLOGIA_COLORS[item.perfil] || "#8592AA", border: `1px solid ${TIPOLOGIA_COLORS[item.perfil] || "#8592AA"}30` }}>
+                        {item.perfil}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: "var(--text-2)" }}>
+                    {[item.cidade, item.uf].filter(Boolean).join(" / ")}
+                    {item.endereco && <span> · {item.endereco}</span>}
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
+                    {item.aluguel != null && (
+                      <span className="mono text-[11px]" style={{ color: "var(--text)" }}>{fmtBRL(item.aluguel)}<span style={{ color: "var(--text-2)" }}>/mês</span></span>
+                    )}
+                    {item.abl != null && (
+                      <span className="mono text-[11px]" style={{ color: "var(--text-2)" }}>{fmtArea(item.abl)}</span>
+                    )}
                   </div>
                 </div>
-                {editing && editing !== "new" && editing.id === item.id && (
-                  <InlineForm label="Editar Imóvel" />
-                )}
-              </React.Fragment>
-            ))}
-
-            {items.length === 0 && editing !== "new" && (
-              <div className="text-[12px] py-3 px-3 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
-                Nenhum imóvel cadastrado neste portfólio.
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => editing && editing.id === item.id ? cancel() : openEdit(item)}
+                    className="p-1.5 rounded hover:bg-[var(--border)]"
+                    style={{ color: editing && editing.id === item.id ? "#DC2626" : "#3B5279" }} title="Editar">
+                    <IconEdit size={13}/>
+                  </button>
+                  <button onClick={() => remove(item)} className="p-1.5 rounded hover:bg-[var(--border)]" style={{ color: "#DC2626" }} title="Remover">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
+            </div>
+            {editing && editing !== "new" && editing.id === item.id && (
+              <PortfolioInlineForm label="Editar Imóvel" form={form} setForm={setForm} save={save} cancel={cancel} saving={saving} />
             )}
+          </React.Fragment>
+        ))}
 
-            {editing === "new" && <InlineForm label="Novo Imóvel" />}
+        {items.length === 0 && editing !== "new" && (
+          <div className="text-[12px] py-3 px-3 rounded" style={{ color: "var(--text-2)", background: "var(--surface-2)" }}>
+            Nenhum imóvel cadastrado neste portfólio.
           </div>
-        );
-      })()}
+        )}
+
+        {editing === "new" && <PortfolioInlineForm label="Novo Imóvel" form={form} setForm={setForm} save={save} cancel={cancel} saving={saving} />}
+      </div>
 
       {/* Add button */}
       {!editing && (
@@ -2010,6 +2035,36 @@ function PortfolioTab({ deal, authFetch }) {
 }
 
 // ---------- DRAWER ----------
+function RespEditor({ resp, onChange }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <span onClick={() => setOpen(o => !o)} title="Clique para alterar responsável"
+        className="cursor-pointer hover:opacity-80">
+        <RespBadge r={resp} />
+      </span>
+      {open && (
+        <div className="absolute mt-1 z-50 status-pop rounded-md p-1" style={{ minWidth: 100 }}>
+          {RESP_OPTS.map(r => (
+            <div key={r} onClick={() => { onChange(r); setOpen(false); }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded text-[12px] cursor-pointer hover:bg-[var(--surface-2)]"
+              style={{ fontWeight: r === resp ? 600 : 400, color: "var(--text)" }}>
+              <RespBadge r={r} />
+              {r === resp && <span className="ml-auto text-[10px]" style={{ color: "var(--c-blue1)" }}>●</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatusEditor({ status, onChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -2057,7 +2112,7 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
   const updateField = (key, val) => {
     const updated = { ...deal, [key]: val, updated_at: new Date().toISOString() };
     onChange(updated);
-    if (key === "status" || key === "broker_envolvido") onSave(updated);
+    if (key === "status" || key === "broker_envolvido" || key === "responsavel") onSave(updated);
   };
 
   return (
@@ -2077,7 +2132,7 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
           </div>
           <div className="flex items-center gap-2 mt-3">
             <StatusEditor status={deal.status} onChange={(s) => updateField("status", s)} />
-            <RespBadge r={deal.responsavel} />
+            <RespEditor resp={deal.responsavel} onChange={(r) => updateField("responsavel", r)} />
             <span className="text-[11px] mono ml-auto" style={{ color: "var(--text-2)" }}>{relTime(deal.updated_at)}</span>
           </div>
         </div>
@@ -2220,7 +2275,7 @@ function DealModal({ initial, onClose, onSave, authFetch }) {
     aluguel_mensal: "", preco_pedido: "", ultimo_valor: "", yield_ultima_proposta: "",
     perfil_vendedor: "", broker_envolvido: false, nome_broker: "",
     estrategia: "", veiculo_oferta: "",
-    status: "DESCRIÇÃO RECEBIDA", responsavel: "CM",
+    status: "OPORTUNIDADES RECEBIDAS", responsavel: "CM",
     proximos_passos: "", historico_negociacoes: "",
   });
   const [tab, setTab] = useState("ident");
