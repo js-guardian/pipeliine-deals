@@ -859,11 +859,18 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
   const [fMes, setFMes] = useState([]);
   const [posInput, setPosInput] = useState(null); // { dealId, value } — posição sendo editada
 
-  const handleDelete = async (e, dealId) => {
+  const [deleteTarget, setDeleteTarget] = useState(null); // deal aguardando confirmação de exclusão
+
+  const handleDelete = (e, deal) => {
     e.stopPropagation();
-    if (!confirm("Apagar este deal permanentemente? Esta ação não pode ser desfeita.")) return;
-    await authFetch(`/api/deals/${dealId}`, { method: "DELETE" });
-    setDeals(ds => ds.filter(d => d.id !== dealId));
+    setDeleteTarget(deal);
+  };
+
+  const confirmDelete = async () => {
+    const id = deleteTarget.id;
+    setDeleteTarget(null);
+    await authFetch(`/api/deals/${id}`, { method: "DELETE" });
+    setDeals(ds => ds.filter(d => d.id !== id));
   };
 
   const moveTo = (dealId, targetPos1based) => {
@@ -1091,7 +1098,7 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
                 <td className="px-3 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{d.created_at ? new Date(d.created_at).toLocaleDateString("pt-BR") : "—"}</td>
                 <td className="px-4 py-3 text-right text-[12px] mono" style={{ color: "var(--text-2)", whiteSpace: "nowrap" }}>{relTime(d.updated_at)}</td>
                 <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
-                  <button onClick={e => handleDelete(e, d.id)}
+                  <button onClick={e => handleDelete(e, d)}
                     className="p-1.5 rounded opacity-40 hover:opacity-100 hover:bg-[#FEF2F2] transition-opacity"
                     style={{ color: "#D9534F" }}
                     title="Apagar deal">
@@ -1105,6 +1112,28 @@ function DealsPage({ deals, setDeals, openDrawer, selectedId, openModal, authFet
           </tbody>
         </table>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center modal-overlay" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setDeleteTarget(null)}>
+          <div className="modal-card rounded-lg p-6" style={{ width: 420, background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "0 12px 48px rgba(20,30,60,0.25)" }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 mb-3">
+              <span style={{ color: "#D9534F" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+              </span>
+              <div className="text-[15px]" style={{ fontWeight: 600 }}>Excluir Deal{deleteTarget.produto ? ` — ${deleteTarget.produto}` : ""}</div>
+            </div>
+            <div className="text-[13px] mb-5" style={{ color: "var(--text-2)", lineHeight: 1.5 }}>
+              O Deal será excluído permanentemente e todos os dados serão perdidos, gostaria de continuar?
+            </div>
+            <div className="flex gap-3">
+              <button onClick={confirmDelete} className="flex-1 py-2.5 rounded text-[13px] font-medium" style={{ background: "#D9534F", color: "#FFFFFF" }}>Sim</button>
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2.5 rounded text-[13px] font-medium" style={{ background: "var(--surface-2)", color: "var(--text)", border: "1px solid var(--border)" }}>Não</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
