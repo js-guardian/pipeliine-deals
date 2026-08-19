@@ -3,11 +3,12 @@ import json
 import math
 import urllib.request
 from functools import lru_cache
+from datetime import date
 
 import jwt
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -105,7 +106,25 @@ def run_migrations():
             conn.execute(text(
                 "ALTER TABLE pipe_deals ADD COLUMN IF NOT EXISTS sort_order INTEGER"
             ))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS painel_projetos_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    rev INTEGER NOT NULL DEFAULT 0,
+                    state JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS painel_projetos_backups (
+                    backup_date DATE PRIMARY KEY,
+                    rev INTEGER NOT NULL,
+                    state JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """))
         print("[MIGRATE] sort_order column ensured.")
+        print("[MIGRATE] painel_projetos_state table ensured.")
+        print("[MIGRATE] painel_projetos_backups table ensured.")
     except Exception as e:
         print(f"[MIGRATE] {e}")
 
@@ -212,6 +231,88 @@ def version():
 @app.get("/")
 def serve_frontend():
     return FileResponse("front end/index.html")
+
+
+@app.get("/projetos")
+def serve_painel_projetos():
+    return FileResponse("front end/painel_projetos.html")
+
+
+# ---------- PAINEL DE PROJETOS (estado JSON único com controle de revisão) ----------
+_EMPTY_PAINEL_STATE = {"users": [], "projects": []}
+
+
+@app.get("/data")
+def get_painel_state(_: dict = Depends(require_auth)):
+    with get_engine().connect() as conn:
+        row = conn.execute(text("SELECT rev, state FROM painel_projetos_state WHERE id = 1")).fetchone()
+    if row is None:
+        return {"rev": 0, "state": _EMPTY_PAINEL_STATE}
+    return {"rev": row[0], "state": row[1]}
+
+
+@app.post("/data")
+def save_painel_state(payload: dict, x_base_rev: Optional[str] = Header(None), _: dict = Depends(require_auth)):
+    try:
+        base_rev = int(x_base_rev or 0)
+    except ValueError:
+        base_rev = 0
+    with get_engine().begin() as conn:
+        row = conn.execute(text("SELECT rev, state FROM painel_projetos_state WHERE id = 1 FOR UPDATE")).fetchone()
+        if row is None:
+            conn.execute(
+                text("INSERT INTO painel_projetos_state (id, rev, state) VALUES (1, 1, CAST(:state AS JSONB))"),
+                {"state": json.dumps(payload)},
+            )
+            return {"rev": 1}
+        if base_rev != row[0]:
+            # outro usuário salvou antes: devolve a versão atual para o front reexibir
+            return JSONResponse(status_code=409, content={"rev": row[0], "state": row[1]})
+        # backup diário: na 1ª gravação do dia, preserva o estado como estava antes dela
+        try:
+            with conn.begin_nested():  # SAVEPOINT: falha do backup não derruba o save
+                conn.execute(
+                    text("""
+                        INSERT INTO painel_projetos_backups (backup_date, rev, state)
+                        SELECT :d, rev, state FROM painel_projetos_state WHERE id = 1
+                        ON CONFLICT (backup_date) DO NOTHING
+                    """),
+                    {"d": date.today()},
+                )
+        except Exception as e:
+            print(f"[BACKUP] {e}")
+        new_rev = row[0] + 1
+        conn.execute(
+            text("UPDATE painel_projetos_state SET rev = :rev, state = CAST(:state AS JSONB), updated_at = now() WHERE id = 1"),
+            {"rev": new_rev, "state": json.dumps(payload)},
+        )
+        return {"rev": new_rev}
+
+
+@app.get("/data/backups")
+def list_painel_backups(_: dict = Depends(require_auth)):
+    with get_engine().connect() as conn:
+        rows = conn.execute(text(
+            "SELECT backup_date, rev, created_at FROM painel_projetos_backups ORDER BY backup_date DESC"
+        )).fetchall()
+    return [{"date": r[0].isoformat(), "rev": r[1], "created_at": r[2].isoformat()} for r in rows]
+
+
+@app.get("/data/backups/{backup_date}")
+def get_painel_backup(backup_date: str, _: dict = Depends(require_auth)):
+    try:
+        d = date.fromisoformat(backup_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Data inválida (use YYYY-MM-DD)")
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            text("SELECT state FROM painel_projetos_backups WHERE backup_date = :d"),
+            {"d": d},
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Backup não encontrado")
+    # state puro: o JSON baixado é aceito diretamente pelo botão "Importar" do painel
+    return row[0]
 
 
 @app.get("/api/deals")

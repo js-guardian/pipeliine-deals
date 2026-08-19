@@ -366,6 +366,9 @@ function Sidebar({ view, setView, onLogout, userEmail }) {
         <div className={`nav-item ${view === "deals" ? "active" : ""}`} onClick={() => setView("deals")}>
           <IconList size={15} /> Deals
         </div>
+        <div className="nav-item" onClick={() => { window.location.href = "/projetos"; }}>
+          <IconGrid size={15} /> Projetos
+        </div>
       </nav>
 
       <div className="mt-auto px-3 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>

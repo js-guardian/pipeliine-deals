@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guardian — Painel de Projetos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<style>
+  :root{--border:#E3E7EE;--border-2:#D6DCE6;--text:#1B2233;--text-2:#6B7385;--surface-2:#EEF1F6}
+  body{font-family:"Avenir Next LT Pro","Avenir","Segoe UI",Arial,sans-serif;background:#F4F6F8;color:#262626;min-height:100vh}
+  /* controles de filtro — mesmos do Pipeline (gp-input / gp-select) */
+  .gp-input, .gp-select {
+    background: #FFFFFF;
+    border: 1px solid var(--border-2);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    width: 100%;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .gp-input:focus, .gp-select:focus {
+    outline: none;
+    border-color: #2F5597;
+    box-shadow: 0 0 0 3px rgba(47,85,151,0.12);
+  }
+  .gp-input::placeholder { color: #9AA3B5; }
+  .gp-select { appearance: none; -webkit-appearance: none; background-image:
+    linear-gradient(45deg, transparent 50%, #8592AA 50%),
+    linear-gradient(135deg, #8592AA 50%, transparent 50%);
+    background-position: calc(100% - 14px) 14px, calc(100% - 9px) 14px;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 26px;
+  }
+  .numfont{font-family:"Geometos Rounded","Montserrat",Arial,sans-serif}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#C6CDDB;border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ---------- constantes ---------- */
+const PALETTE = ['#39537A','#5A98B5','#31B0CB','#379D9C','#999999','#374856'];
+const LS_KEY = 'guardian_painel_projetos_v1';
+const ME_KEY = 'guardian_painel_me';
+const STATUS_LABELS = {todo:'A fazer', doing:'Em andamento', done:'Concluída'};
+const SIT_LABELS = {ativo:'Ativo', standby:'Stand-by', concluido:'Concluído', cancelado:'Cancelado'};
+const MESES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const PRIOS = {alta:{lbl:'Alta',color:'#C0392B',rank:0}, media:{lbl:'Média',color:'#B9770E',rank:1}, baixa:{lbl:'Baixa',color:'#5A98B5',rank:2}};
+const PAG = {cotas:'Cotas', dinheiro:'Dinheiro', misto:'Misto'};
+const C = {slate:'#374856', blood:'#5A98B5', carbon:'#262626', navy:'#39537A', teal:'#379D9C', grey:'#999999', line:'#E3E8EC', danger:'#C0392B', warn:'#B9770E'};
+const SIT_BADGE = {concluido:'bg-[#DFF0EF] text-[#379D9C]', cancelado:'bg-[#F0E1DF] text-[#C0392B]', standby:'bg-[#F7EFD9] text-[#B9770E]'};
+
+/* classes utilitárias compartilhadas */
+const BTN       = 'text-[13px] font-semibold rounded-md px-4 py-[9px] cursor-pointer transition hover:brightness-110 border-0';
+const BTN_SM    = 'text-[12px] font-semibold rounded-md px-2.5 py-[5px] cursor-pointer transition hover:brightness-110 border-0';
+const BTN_PRIM  = BTN + ' bg-[#5A98B5] text-white';
+const BTN_SLATE = BTN + ' bg-[#374856] text-white';
+const BTN_SLATE_SM = BTN_SM + ' bg-[#374856] text-white';
+const BTN_GHOST = 'text-[13px] font-semibold rounded-md px-4 py-[9px] cursor-pointer transition bg-transparent text-white border border-white/35 hover:bg-white/10';
+const INPUT     = 'w-full px-3 py-[9px] border border-[#E3E8EC] rounded-lg text-[14px] bg-white focus:outline-none focus:ring-2 focus:ring-[#5A98B5]';
+const MINI_SEL  = 'text-[11.5px] px-[5px] py-[3px] border border-[#E3E8EC] rounded-md bg-white text-[#262626] max-w-[140px] cursor-pointer';
+const ICON_BTN  = 'bg-transparent border-0 cursor-pointer text-[14px] text-[#999999] hover:text-[#374856] p-1';
+const ICON_DEL  = 'bg-transparent border-0 cursor-pointer text-[14px] text-[#999999] hover:text-[#C0392B] p-1';
+
+/* ---------- autenticação (mesma sessão Supabase do Pipeline) ---------- */
+const REMOTE = location.protocol === 'http:' || location.protocol === 'https:';
+const SUPABASE_URL      = "https://varkabkouznhupdisdcg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhcmthYmtvdXpuaHVwZGlzZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNDgzNjEsImV4cCI6MjA5MjYyNDM2MX0.yZZez0QFu2WSQ1-6_paBBD7D7GQM9heWN9SGp28PCc0";
+const _supa = REMOTE ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+async function authFetch(url, opts = {}){
+  const { data } = await _supa.auth.getSession();
+  if(!data.session){ location.href = '/'; throw new Error('sessão expirada'); }
+  const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), 'Authorization': 'Bearer ' + data.session.access_token } });
+  if(r.status === 401 || r.status === 403){ location.href = '/'; throw new Error('não autorizado'); }
+  return r;
+}
+
+/* ---------- helpers ---------- */
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function initials(name){
+  const p = (name||'?').trim().split(/[\s\/]+/).filter(Boolean);
+  return ((p[0]||'?')[0] + (p.length>1 ? p[p.length-1][0] : '')).toUpperCase();
+}
+function fmtDate(iso){ if(!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; }
+function fmtDateShort(iso){ if(!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}/${m}/${y.slice(2)}`; }
+function fmtNum(n){ return (Number(n)||0).toLocaleString('pt-BR'); }
+function parseValor(str){ const d = (str||'').replace(/[^\d]/g,''); return d ? Number(d) : ''; }
+function fmtBRLc(n){
+  n = Number(n)||0;
+  if(n>=1e6) return 'R$ ' + (n/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1}) + ' MM';
+  if(n>=1e3) return 'R$ ' + (n/1e3).toLocaleString('pt-BR',{maximumFractionDigits:0}) + ' mil';
+  return 'R$ ' + n.toLocaleString('pt-BR');
+}
+function fmtStamp(ts){
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function todayISO(){ const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function toISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function parseISO(iso){ const [y,m,d] = iso.split('-').map(Number); return new Date(y, m-1, d); }
+function addDays(iso, n){ const d = parseISO(iso); d.setDate(d.getDate()+n); return toISO(d); }
+function diffDays(a, b){ return Math.round((parseISO(b) - parseISO(a)) / 86400000); }
+function dueClass(t){
+  if(t.status==='done' || !t.due) return '';
+  const today = todayISO();
+  if(t.due < today) return 'late';
+  if(t.due <= addDays(today,7)) return 'soon';
+  return '';
+}
+function subLate(s){ return !s.done && s.date && s.date < todayISO(); }
+function srank(s){ return PRIOS[s.prioridade] ? PRIOS[s.prioridade].rank : 1; }
+function subSort(list){ return list.slice().sort((a,b) => (a.done?1:0)-(b.done?1:0) || srank(a)-srank(b) || (a.date||'9999').localeCompare(b.date||'9999')); }
+function isArchived(p){ return p.situacao && p.situacao !== 'ativo'; }
+
+function seed(){
+  return { users:[], projects: [
+    { id: uid(), name:'Brookfield LOG — RentRoll', desc:'', cp:{name:'Brookfield', color:'#39537A'}, situacao:'ativo', due:'', updates:[], tasks:[] }
+  ]};
+}
+
+/* migração de dados de versões anteriores */
+function migrate(s){
+  let changed = false;
+  if(!Array.isArray(s.users)){ s.users = []; changed = true; }
+  const norm = n => (n||'').trim().toLowerCase().replace(/\s+/g,' ');
+  const byName = {};
+  s.users.forEach(u => byName[norm(u.name)] = u);
+  s.projects.forEach(p => {
+    if(!p.situacao){ p.situacao = 'ativo'; changed = true; }
+    if(p.due === undefined){ p.due = ''; changed = true; }
+    if(p.valor === undefined){ p.valor = ''; changed = true; }
+    if(p.pagamento === undefined){ p.pagamento = ''; changed = true; }
+    if(!Array.isArray(p.updates)) p.updates = [];
+    p.tasks.forEach(t => {
+      if(!Array.isArray(t.updates)) t.updates = [];
+      if(!Array.isArray(t.subtasks)) t.subtasks = [];
+      if(!t.prioridade){ t.prioridade = 'media'; changed = true; }
+      if(t.resp && !t.respId){
+        let u = byName[norm(t.resp)];
+        if(!u){
+          u = { id: uid(), name: t.resp.trim(), type: t.type || 'guardian' };
+          s.users.push(u); byName[norm(u.name)] = u;
+        }
+        t.respId = u.id; changed = true;
+      }
+    });
+  });
+  return changed;
+}
+
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  const s = seed();
+  localStorage.setItem(LS_KEY, JSON.stringify(s));
+  return s;
+}
+
+/* ---------- átomos de UI ---------- */
+function Avatar({name, color, size=26, fontSize=11}){
+  return <span className="inline-flex items-center justify-center rounded-full text-white font-bold shrink-0 align-middle"
+    style={{width:size, height:size, fontSize, background:color}}>{initials(name)}</span>;
+}
+
+function Field({label, children}){
+  return <div className="mb-3.5">
+    <label className="block text-[12px] font-bold uppercase tracking-wider text-[#999999] mb-[5px]">{label}</label>
+    {children}
+  </div>;
+}
+
+function Overlay({onClose, children}){
+  return <div className="fixed inset-0 bg-[#262626]/55 flex items-start justify-center pt-[60px] px-4 pb-6 z-50 overflow-y-auto"
+      onClick={e => { if(e.target === e.currentTarget) onClose(); }}>
+    <div className="bg-white rounded-xl w-full max-w-[540px] px-7 py-[26px]">{children}</div>
+  </div>;
+}
+
+function UpdateForm({placeholder, onAdd, small}){
+  const [txt, setTxt] = useState('');
+  return <div className="flex gap-2.5 mb-3">
+    <textarea value={txt} onChange={e=>setTxt(e.target.value)} placeholder={placeholder}
+      className="flex-1 resize-y min-h-[44px] px-3 py-2.5 border border-[#E3E8EC] rounded-lg text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#5A98B5]"/>
+    <button className={small ? BTN_SLATE_SM : BTN_SLATE}
+      onClick={()=>{ const v = txt.trim(); if(!v) return; onAdd(v); setTxt(''); }}>Registrar</button>
+  </div>;
+}
+
+function UpdateList({updates, onDel, emptyMsg}){
+  if(!updates || !updates.length) return emptyMsg ? <p className="text-[#999999] text-[13px] py-3.5 px-1 italic">{emptyMsg}</p> : null;
+  return <div>
+    {updates.slice().reverse().map((u,i) => (
+      <div key={updates.length-1-i} className="group flex gap-3 items-baseline px-1 py-[9px] border-b border-dashed border-[#E3E8EC] text-[13.5px]">
+        <span className="numfont text-[11px] text-[#5A98B5] whitespace-nowrap font-bold">{fmtStamp(u.ts)}</span>
+        {u.author ? <span className="text-[11.5px] text-[#999999] whitespace-nowrap">{u.author}</span> : null}
+        <span>{u.text}</span>
+        <button className={ICON_DEL + ' ml-auto invisible group-hover:visible'} title="Excluir"
+          onClick={()=>onDel(updates.length-1-i)}>×</button>
+      </div>
+    ))}
+  </div>;
+}
+
+/* ---------- cabeçalho ---------- */
+function Header({syncOk, users, me, setMe, onNewProject, onTeam, onExport, onImport}){
+  const fileRef = useRef(null);
+  const sorted = users.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const syncText = !REMOTE
+    ? '● Modo local — dados NÃO compartilhados (use o link http:// da rede)'
+    : (syncOk ? '● Sincronizado' : '● Sem conexão com o servidor');
+  const syncColor = !REMOTE ? '#F7DC9F' : (syncOk ? '#8FD8B5' : '#F5B7B1');
+  return <header className="bg-[#374856] text-white px-8 py-4 flex items-center gap-3.5 flex-wrap">
+    <div className="flex flex-col">
+      <span className="text-[20px] font-bold tracking-[4px]">GUARDIAN</span>
+      <span className="text-[11px] tracking-[2px] uppercase text-[#5A98B5]">Painel de Projetos</span>
+    </div>
+    <span className="text-white/30 text-[20px] font-light select-none mx-1">|</span>
+    <a href="/" className="text-[11px] font-semibold rounded-md px-2.5 py-[5px] bg-transparent text-white border border-white/35 no-underline transition hover:bg-white/10">⇄ Pipeline de Deals</a>
+    <div className="flex-1"></div>
+    <span className="text-[12px] opacity-90 mr-1.5" style={{color: syncColor}}>{syncText}</span>
+    <span className="flex items-center gap-[7px] text-[12.5px]">Você:{' '}
+      <select value={me} onChange={e=>setMe(e.target.value)}
+        className="bg-white/10 text-white border border-white/30 rounded-md px-2 py-1.5 text-[12.5px]">
+        <option value="" className="text-[#262626]">— selecione —</option>
+        {sorted.map(u => <option key={u.id} value={u.id} className="text-[#262626]">{u.name}</option>)}
+      </select>
+    </span>
+    <button className={BTN_PRIM} onClick={onNewProject}>+ Novo Projeto</button>
+    <button className={BTN_GHOST} onClick={onTeam}>Equipe</button>
+    <button className={BTN_GHOST} onClick={onExport}>Exportar backup</button>
+    <button className={BTN_GHOST} onClick={()=>fileRef.current.click()}>Importar</button>
+    <input type="file" ref={fileRef} accept=".json" className="hidden" onChange={e=>onImport(e.target)}/>
+  </header>;
+}
+
+/* ---------- KPIs ---------- */
+function KPIs({state}){
+  const ativos = state.projects.filter(p=>!isArchived(p));
+  const all = ativos.flatMap(p=>p.tasks);
+  const open = all.filter(t=>t.status!=='done');
+  const late = open.filter(t=>dueClass(t)==='late').length;
+  const soon = open.filter(t=>dueClass(t)==='soon').length;
+  const lateSubs = all.flatMap(t=>t.subtasks||[]).filter(subLate).length;
+  const totalVal = ativos.reduce((s,p)=>s+(Number(p.valor)||0),0);
+  const Card = ({num, lbl, style}) => (
+    <div className="bg-white border border-[#E3E8EC] rounded-[10px] px-5 py-4">
+      <div className="numfont text-[30px] font-extrabold leading-[1.1] text-[#374856]" style={style}>{num}</div>
+      <div className="text-[12px] uppercase tracking-wider text-[#999999] mt-1">{lbl}</div>
+    </div>
+  );
+  return <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3.5 mb-6">
+    <Card num={ativos.length} lbl="Projetos ativos"/>
+    <Card num={open.length} lbl="Demandas em aberto"/>
+    <Card num={late} lbl="Demandas atrasadas" style={late ? {color:C.danger} : null}/>
+    <Card num={lateSubs} lbl="Tarefas atrasadas" style={lateSubs ? {color:C.danger} : null}/>
+    <Card num={soon} lbl="Vencem em 7 dias" style={{color:C.blood}}/>
+    {totalVal ? <Card num={fmtBRLc(totalVal)} lbl="Valor em pipeline (ativos)" style={{fontSize:22}}/> : null}
+  </div>;
+}
+
+/* ---------- filtros (mesmos componentes do Pipeline) ---------- */
+function IconSearch({size=14}){
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>;
+}
+
+function MultiSelect({ options, values, onChange, placeholder, width }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const toggle = (v) => onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
+  const label = values.length === 0
+    ? placeholder
+    : values.length === 1
+      ? (options.find(o => o.value === values[0])?.label || values[0])
+      : `${values.length} selecionados`;
+  return (
+    <div className="relative" ref={ref} style={{ width }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="gp-select w-full flex items-center justify-between gap-1"
+        style={{ cursor: "pointer", paddingRight: 8 }}>
+        <span className="truncate text-[12px]" style={{ color: values.length === 0 ? "var(--text-2)" : "var(--text)" }}>{label}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-50 mt-1 rounded-md p-1"
+          style={{ background: "#fff", border: "1px solid var(--border)", boxShadow: "0 8px 24px rgba(20,30,60,.12)", minWidth: "100%", maxHeight: 220, overflowY: "auto" }}>
+          {options.map(opt => (
+            <label key={opt.value}
+              className="flex items-center gap-2 px-3 py-2 rounded text-[12px] cursor-pointer hover:bg-[var(--surface-2)]"
+              style={{ color: "var(--text)", userSelect: "none" }}>
+              <input type="checkbox" checked={values.includes(opt.value)} onChange={() => toggle(opt.value)}
+                style={{ accentColor: "#3B5279", cursor: "pointer" }} />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SingleSelect({ options, value, onChange, placeholder, defaultValue, width }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const isDefault = value === defaultValue;
+  const sel = options.find(o => o.value === value);
+  const label = isDefault ? placeholder : (sel ? sel.label : placeholder);
+  return (
+    <div className="relative" ref={ref} style={{ width }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="gp-select w-full flex items-center justify-between gap-1"
+        style={{ cursor: "pointer", paddingRight: 8 }}>
+        <span className="truncate text-[12px]" style={{ color: isDefault ? "var(--text-2)" : "var(--text)" }}>{label}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 z-50 mt-1 rounded-md p-1"
+          style={{ background: "#fff", border: "1px solid var(--border)", boxShadow: "0 8px 24px rgba(20,30,60,.12)", minWidth: "100%", maxHeight: 220, overflowY: "auto" }}>
+          {options.map(opt => (
+            <div key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className="flex items-center gap-2 px-3 py-2 rounded text-[12px] cursor-pointer hover:bg-[var(--surface-2)]"
+              style={{ color: "var(--text)", userSelect: "none" }}>
+              <span className="shrink-0 text-center" style={{ width: 12, color: "#3B5279", fontWeight: 700 }}>{opt.value === value ? '✓' : ''}</span>
+              <span className="truncate">{opt.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- barra de ferramentas ---------- */
+function Toolbar({q,setQ, fUser,setFUser, fPrio,setFPrio, fPag,setFPag, fSit,setFSit,
+                  view,setView, gProj,setGProj, gSubtasks,setGSubtasks, users, projects}){
+  const sorted = users.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const anyFilter = q || fUser.length > 0 || fPrio.length > 0 || fPag.length > 0 || fSit.length > 0;
+  return <div className="flex items-center gap-2.5 mb-[18px] flex-wrap">
+    <div className="relative flex-1 max-w-[360px] min-w-[220px]">
+      <span className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{color:'var(--text-2)'}}><IconSearch size={14}/></span>
+      <input value={q} onChange={e=>setQ(e.target.value)} className="gp-input" style={{paddingLeft:30}}
+        placeholder="Buscar por projeto ou contraparte…"/>
+    </div>
+    <MultiSelect options={sorted.map(u => ({ value: u.id, label: u.name }))}
+      values={fUser} onChange={setFUser} placeholder="Responsável — Todos" width={160}/>
+    <MultiSelect options={Object.entries(PRIOS).map(([k,v]) => ({ value: k, label: v.lbl }))}
+      values={fPrio} onChange={setFPrio} placeholder="Prioridade — Todas" width={145}/>
+    <MultiSelect options={Object.entries(PAG).map(([k,v]) => ({ value: k, label: v }))}
+      values={fPag} onChange={setFPag} placeholder="Pagamento — Todos" width={150}/>
+    <MultiSelect options={Object.entries(SIT_LABELS).map(([k,v]) => ({ value: k, label: v }))}
+      values={fSit} onChange={setFSit} placeholder="Situação — Ativos" width={140}/>
+    {anyFilter ? (
+      <button onClick={()=>{ setQ(''); setFUser([]); setFPrio([]); setFPag([]); setFSit([]); }}
+        className="text-[11px] px-2 py-1.5 rounded bg-transparent border-0 cursor-pointer" style={{color:'var(--text-2)'}}>
+        Limpar
+      </button>
+    ) : null}
+    {view==='gantt' ? <SingleSelect
+      options={[{ value: 'all', label: 'Todos os projetos ativos' }, ...projects.map(p => ({ value: p.id, label: p.name }))]}
+      value={gProj} onChange={setGProj} defaultValue="all"
+      placeholder="Gantt — Todos os projetos ativos" width={230}/> : null}
+    {view==='gantt' ? <button className={BTN_SLATE_SM} style={{opacity: gSubtasks ? 1 : .55}}
+      onClick={()=>setGSubtasks(!gSubtasks)}>{gSubtasks ? 'Tarefas: mostrando' : 'Tarefas: ocultas'}</button> : null}
+    <div className="flex border border-[#E3E8EC] rounded-lg overflow-hidden ml-auto">
+      {['lista','gantt'].map(v => (
+        <button key={v} onClick={()=>setView(v)}
+          className={'border-0 px-4 py-[9px] text-[13px] font-semibold cursor-pointer ' + (view===v ? 'bg-[#374856] text-white' : 'bg-white text-[#999999]')}>
+          {v==='lista' ? 'Lista' : 'Gantt'}
+        </button>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ---------- subtarefas ---------- */
+function SubItem({s, users, me, onDone, onRename, onResp, onPrio, onDate, onDel}){
+  const spr = PRIOS[s.prioridade] || PRIOS.media;
+  const late = subLate(s);
+  const sorted = users.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  return <div className={'flex items-center gap-[9px] py-2 pl-2 pr-1.5 border-b border-dashed border-[#E3E8EC] last:border-b-0 text-[13px] flex-wrap border-l-[3px] rounded-r-md transition '
+      + (s.done ? 'bg-[#F1F8F5] border-l-[#379D9C]' : late ? 'bg-[#FDF3F2] border-l-[#C0392B]' : 'border-l-transparent')}>
+    <input type="checkbox" checked={!!s.done} onChange={e=>onDone(e.target.checked)}
+      className="w-4 h-4 cursor-pointer shrink-0 accent-[#379D9C]" title="Marcar como concluída"/>
+    <span className="text-[13px] leading-none cursor-help" style={{color:spr.color}} title={'Prioridade '+spr.lbl}>⚑</span>
+    <input key={s.id+':'+s.title} defaultValue={s.title}
+      className={'flex-1 min-w-[140px] text-[13.5px] px-1.5 py-1 border border-transparent rounded-md bg-transparent hover:border-[#E3E8EC] focus:outline-none focus:ring-2 focus:ring-[#5A98B5] focus:bg-white '
+        + (s.done ? 'line-through text-[#999999]' : 'text-[#262626]')}
+      onBlur={e=>onRename(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') e.target.blur(); }}/>
+    <select className={MINI_SEL} title="Responsável" value={s.respId||''} onChange={e=>onResp(e.target.value)}>
+      <option value="">— sem resp. —</option>
+      {sorted.map(u => <option key={u.id} value={u.id}>{u.name}{u.type==='externo'?' (ext.)':''}</option>)}
+    </select>
+    <select className={MINI_SEL} title="Prioridade" value={s.prioridade||'media'} onChange={e=>onPrio(e.target.value)}>
+      {Object.entries(PRIOS).map(([k,v]) => <option key={k} value={k}>{v.lbl}</option>)}
+    </select>
+    <input type="date" value={s.date||''} onChange={e=>onDate(e.target.value)} title="Data de acompanhamento"
+      className={'text-[12px] px-1.5 py-1 border rounded-md bg-white ' + (late ? 'border-[#C0392B] text-[#C0392B] font-bold' : 'border-[#E3E8EC] text-[#262626]')}/>
+    {s.done
+      ? <span className="text-[10px] font-bold uppercase tracking-[.5px] rounded px-2 py-[3px] whitespace-nowrap bg-[#DFF0EF] text-[#379D9C]">✓ Concluída</span>
+      : (late ? <span className="text-[10px] font-bold uppercase tracking-[.5px] rounded px-2 py-[3px] whitespace-nowrap bg-[#F9E4E1] text-[#C0392B]">⚠ Atrasada</span> : null)}
+    <button className={ICON_DEL} title="Excluir tarefa" onClick={onDel}>×</button>
+  </div>;
+}
+
+function SubAdd({users, me, onAdd}){
+  const [title, setTitle] = useState('');
+  const [respId, setRespId] = useState(me || '');
+  const [prio, setPrio] = useState('media');
+  const [date, setDate] = useState('');
+  const sorted = users.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const submit = () => {
+    const v = title.trim();
+    if(!v) return;
+    onAdd({title:v, respId, prioridade:prio, date});
+    setTitle(''); setDate('');
+  };
+  return <div className="flex gap-2 mt-2.5 items-center flex-wrap">
+    <input type="text" value={title} onChange={e=>setTitle(e.target.value)}
+      onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+      placeholder="Nova tarefa (ex.: Cobrar retorno do DG)"
+      className="flex-1 min-w-[160px] px-2.5 py-[7px] border border-[#E3E8EC] rounded-lg text-[13px] focus:outline-none focus:ring-2 focus:ring-[#5A98B5]"/>
+    <select className={MINI_SEL} title="Responsável" value={respId} onChange={e=>setRespId(e.target.value)}>
+      <option value="">— sem resp. —</option>
+      {sorted.map(u => <option key={u.id} value={u.id}>{u.name}{u.type==='externo'?' (ext.)':''}</option>)}
+    </select>
+    <select className={MINI_SEL} title="Prioridade" value={prio} onChange={e=>setPrio(e.target.value)}>
+      {Object.entries(PRIOS).map(([k,v]) => <option key={k} value={k}>{v.lbl}</option>)}
+    </select>
+    <input type="date" value={date} onChange={e=>setDate(e.target.value)} title="Data de acompanhamento (opcional)"
+      className="px-2 py-[7px] border border-[#E3E8EC] rounded-lg text-[12.5px]"/>
+    <button className={BTN_SLATE_SM} onClick={submit}>Adicionar tarefa</button>
+  </div>;
+}
+
+/* ---------- linha da demanda ---------- */
+function TaskRow({p, t, users, me, subVisible, openNotes, openSubs, handlers}){
+  const dc = dueClass(t);
+  const nUpd = (t.updates||[]).length;
+  const subs = t.subtasks||[];
+  const nSub = subs.length, subDone = subs.filter(s=>s.done).length;
+  const subLateN = subs.filter(subLate).length;
+  // exibição: recorte dos filtros + ordenação por prioridade/data (contadores seguem no total real)
+  const subsShown = subSort(subs.filter(subVisible));
+  const pr = PRIOS[t.prioridade] || PRIOS.media;
+  const stStyle = t.status==='doing' ? {color:C.blood, borderColor:C.blood}
+                : t.status==='done'  ? {color:C.teal,  borderColor:C.teal}
+                : {color:C.grey};
+  const TD = 'px-2.5 py-2.5 border-b border-[#E3E8EC] align-middle';
+  return <React.Fragment>
+    <tr className={t.status==='done' ? 'opacity-[.55]' : ''}>
+      <td className={TD}>
+        <span className="text-[13px] leading-none mr-[5px] cursor-help" style={{color:pr.color}} title={'Prioridade '+pr.lbl}>⚑</span>
+        <span className={'font-semibold text-[#262626] ' + (t.status==='done' ? 'line-through' : '')}>{t.title}</span>
+        {nSub ? <div className="flex items-center gap-1.5 mt-1 ml-[18px]" title={`Progresso das tarefas: ${subDone}/${nSub}`}>
+          <div className="h-[4px] w-[90px] bg-[#ECF0F3] rounded overflow-hidden">
+            <div className="h-full bg-[#5A98B5] transition-all" style={{width: Math.round(subDone/nSub*100)+'%'}}></div>
+          </div>
+          <span className="numfont text-[10px] text-[#999999]">{subDone}/{nSub}</span>
+        </div> : null}
+      </td>
+      <td className={TD + ' whitespace-nowrap'}>{fmtDate(t.start)}</td>
+      <td className={TD + ' whitespace-nowrap ' + (dc==='late' ? 'text-[#C0392B] font-bold' : dc==='soon' ? 'text-[#B9770E] font-bold' : '')}>
+        {fmtDate(t.due)}{dc==='late' ? ' ⚠' : ''}
+      </td>
+      <td className={TD + ' whitespace-nowrap'}>
+        <Avatar name={t.resp} color={t.type==='guardian' ? C.navy : C.grey} size={22} fontSize={10}/>{' '}
+        {t.resp||'—'}{' '}
+        <span className={'text-[10px] uppercase tracking-[.5px] rounded px-1.5 py-[2px] font-bold ' + (t.type==='externo' ? 'bg-[#EFEFEF] text-[#666666]' : 'bg-[#E4EEF4] text-[#39537A]')}>
+          {t.type==='externo' ? 'Externo' : 'Guardian'}
+        </span>
+      </td>
+      <td className={TD}>
+        <select value={t.status} onChange={e=>handlers.setStatus(p.id, t.id, e.target.value)} style={stStyle}
+          className="text-[12px] font-semibold px-1.5 py-1 rounded-md border border-[#E3E8EC] bg-white cursor-pointer">
+          {Object.entries(STATUS_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </td>
+      <td className={TD + ' whitespace-nowrap text-right'}>
+        <button className={ICON_BTN} title={`Tarefas da demanda (${subDone}/${nSub})`} onClick={()=>handlers.toggleSubs(t.id)}>
+          ☑{nSub ? <sup className="text-[9px]" style={subLateN ? {color:C.danger} : null}>{subDone}/{nSub}</sup> : null}
+        </button>
+        <button className={ICON_BTN} title={`Notas da demanda (${nUpd})`} onClick={()=>handlers.toggleNotes(t.id)}>
+          💬{nUpd ? <sup className="text-[9px]">{nUpd}</sup> : null}
+        </button>
+        <button className={ICON_BTN} title="Editar" onClick={()=>handlers.openTask(p.id, t.id)}>✎</button>
+      </td>
+    </tr>
+    {openNotes.has(t.id) ? <tr><td colSpan={6} className="bg-[#F8FAFB] px-4 py-3 border-b border-[#E3E8EC]">
+      <UpdateForm small placeholder="Atualização desta demanda..." onAdd={txt=>handlers.addTaskUpdate(p.id, t.id, txt)}/>
+      <UpdateList updates={t.updates||[]} onDel={idx=>handlers.delTaskUpdate(p.id, t.id, idx)} emptyMsg="Sem notas ainda."/>
+    </td></tr> : null}
+    {openSubs.has(t.id) ? <tr><td colSpan={6} className="bg-[#F8FAFB] px-4 py-3 border-b border-[#E3E8EC]">
+      <div className="text-[11px] uppercase tracking-wider text-[#999999] font-bold mb-1.5">Tarefas / checkpoints desta demanda</div>
+      {subsShown.length ? subsShown.map(s => (
+        <SubItem key={s.id} s={s} users={users} me={me}
+          onDone={v=>handlers.toggleSubDone(p.id, t.id, s.id, v)}
+          onRename={v=>handlers.renameSub(p.id, t.id, s.id, v)}
+          onResp={v=>handlers.setSubResp(p.id, t.id, s.id, v)}
+          onPrio={v=>handlers.setSubPrio(p.id, t.id, s.id, v)}
+          onDate={v=>handlers.setSubDate(p.id, t.id, s.id, v)}
+          onDel={()=>handlers.delSub(p.id, t.id, s.id)}/>
+      )) : <p className="text-[#999999] text-[13px] py-3.5 px-1 italic">
+        {subs.length ? 'Nenhuma tarefa desta demanda casa com os filtros ativos.' : 'Nenhuma tarefa ainda. Adicione checkpoints com data de acompanhamento abaixo.'}
+      </p>}
+      <SubAdd users={users} me={me} onAdd={data=>handlers.addSub(p.id, t.id, data)}/>
+    </td></tr> : null}
+  </React.Fragment>;
+}
+
+/* ---------- card do projeto ---------- */
+function ProjectCard({p, expanded, users, me, fUser, taskVisible, subVisible, openNotes, openSubs, handlers, canDrag, dragSrcRef}){
+  const open = expanded.has(p.id);
+  const [dropPos, setDropPos] = useState(null);      // 'above' | 'below' | null
+  const [dragging, setDragging] = useState(false);
+  const dragProps = canDrag ? {
+    draggable: true,
+    onDragStart: e => {
+      // não iniciar o arraste a partir de campos/controles (mantém edição inline e seleção de texto)
+      if(e.target.closest('input,textarea,select,button,a,[contenteditable]')){ e.preventDefault(); return; }
+      dragSrcRef.current = p.id;
+      setDragging(true);
+      e.dataTransfer.effectAllowed = 'move';
+      try{ e.dataTransfer.setData('text/plain', p.id); }catch(_){}
+    },
+    onDragOver: e => {
+      if(!dragSrcRef.current || dragSrcRef.current === p.id) return;
+      e.preventDefault();               // habilita o drop
+      e.dataTransfer.dropEffect = 'move';
+      const r = e.currentTarget.getBoundingClientRect();
+      setDropPos((e.clientY - r.top) > r.height/2 ? 'below' : 'above');
+    },
+    onDragLeave: () => setDropPos(null),
+    onDrop: e => {
+      e.preventDefault();
+      handlers.moveProject(dragSrcRef.current, p.id, dropPos === 'below');
+      dragSrcRef.current = null;
+      setDropPos(null); setDragging(false);
+    },
+    onDragEnd: () => { dragSrcRef.current = null; setDropPos(null); setDragging(false); },
+  } : {};
+  const total = p.tasks.length, done = p.tasks.filter(t=>t.status==='done').length;
+  const late = p.tasks.filter(t=>dueClass(t)==='late').length;
+  const pct = total ? Math.round(done/total*100) : 0;
+  const prank = t => (PRIOS[t.prioridade] ? PRIOS[t.prioridade].rank : 1);
+  const tasksSorted = p.tasks.filter(taskVisible).sort((a,b)=> prank(a)-prank(b) || ((a.due||'9999') < (b.due||'9999') ? -1 : 1));
+  const metaLate = p.due && p.situacao==='ativo' && p.due < todayISO();
+  const CHIP = 'inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-bold whitespace-nowrap';
+  const TH = 'text-left text-[11px] uppercase tracking-wider text-[#999999] px-2.5 py-2 border-b-2 border-[#E3E8EC] whitespace-nowrap font-bold';
+  return <div {...dragProps}
+    className={'bg-white border border-[#E3E8EC] rounded-xl mb-4 overflow-hidden ' + (isArchived(p) ? 'opacity-[.72]' : '')}
+    style={{
+      opacity: dragging ? .45 : undefined,
+      boxShadow: dropPos === 'above' ? 'inset 0 4px 0 -1px #5A98B5' : dropPos === 'below' ? 'inset 0 -4px 0 -1px #5A98B5' : undefined,
+    }}>
+    <div className="flex items-center gap-3.5 px-5 py-4 cursor-pointer select-none hover:bg-[#FAFBFC]" onClick={()=>handlers.toggleProject(p.id)}>
+      <span className={'text-[17px] leading-none px-0.5 select-none shrink-0 ' + (canDrag ? 'text-[#999999] cursor-grab active:cursor-grabbing' : 'text-[#C3CDD4] opacity-35 cursor-not-allowed')}
+        title={canDrag ? 'Arraste para reordenar' : 'Limpe a busca e os filtros para reordenar os projetos'}
+        onClick={e=>e.stopPropagation()}>⠿</span>
+      <div className="w-1.5 self-stretch rounded shrink-0" style={{background:p.cp.color}}></div>
+      <div>
+        <div className="text-[17px] font-bold text-[#374856] flex items-center gap-2 flex-wrap">
+          {p.name}
+          {isArchived(p) ? <span className={'text-[10px] uppercase tracking-[.5px] rounded px-[7px] py-[2px] font-bold ' + (SIT_BADGE[p.situacao]||'')}>{SIT_LABELS[p.situacao]}</span> : null}
+        </div>
+        {p.desc ? <div className="text-[12.5px] text-[#6b7a86] mt-[2px] max-w-[640px]">{p.desc}</div> : null}
+      </div>
+      <div className="ml-auto flex items-center gap-3 shrink-0">
+        {p.valor ? <span className={CHIP + ' bg-[#EAF1F5] text-[#39537A]'} title="Valor do projeto">{fmtBRLc(p.valor)}</span> : null}
+        {p.pagamento ? <span className={CHIP + ' bg-[#EAF3EF] text-[#379D9C]'} title="Forma de pagamento">{PAG[p.pagamento]||p.pagamento}</span> : null}
+        {p.due ? <span className={CHIP + ' ' + (metaLate ? 'bg-[#F9E4E1] text-[#C0392B]' : 'bg-[#EFF3F6] text-[#374856]')} title="Conclusão prevista do projeto">
+          Meta {fmtDateShort(p.due)}{metaLate ? ' ⚠' : ''}</span> : null}
+        {late && !isArchived(p) ? <span className="numfont text-[13px] whitespace-nowrap text-[#C0392B]"><b>{late}</b> atrasada{late>1?'s':''}</span> : null}
+        <span className="numfont text-[13px] text-[#999999] whitespace-nowrap"><b className="text-[#374856]">{done}</b>/{total} demandas</span>
+        <span className="inline-flex items-center gap-[7px] bg-[#EFF3F6] rounded-full pl-1 pr-3 py-1 text-[12.5px] font-semibold text-[#374856]">
+          <Avatar name={p.cp.name} color={p.cp.color}/>{p.cp.name||'—'}
+        </span>
+        <button className={ICON_BTN} title="Editar projeto" onClick={e=>{ e.stopPropagation(); handlers.openProject(p.id); }}>✎</button>
+        <span className={'text-[13px] text-[#999999] transition-transform ' + (open ? 'rotate-180' : '')}>▼</span>
+      </div>
+    </div>
+    <div className="h-1 bg-[#ECF0F3]"><div className="h-full bg-[#5A98B5] transition-all" style={{width:pct+'%'}}></div></div>
+    {open ? <div className="border-t border-[#E3E8EC] px-[22px] pt-[18px] pb-[22px]">
+      <div className="text-[12px] uppercase tracking-[1.5px] text-[#999999] font-bold mb-2.5 flex items-center gap-2.5">
+        Demandas {fUser.length ? '(filtradas por responsável)' : ''}
+        <button className={BTN_SM + ' bg-[#5A98B5] text-white ml-auto'} onClick={()=>handlers.openTask(p.id, null)}>+ Nova demanda</button>
+      </div>
+      {tasksSorted.length ? <table className="w-full border-collapse text-[13.5px]">
+        <thead><tr>
+          <th className={TH} style={{width:'34%'}}>Demanda</th><th className={TH}>Início</th><th className={TH}>Prazo</th>
+          <th className={TH}>Responsável</th><th className={TH}>Status</th><th className={TH}></th>
+        </tr></thead>
+        <tbody>
+          {tasksSorted.map(t => <TaskRow key={t.id} p={p} t={t} users={users} me={me}
+            subVisible={subVisible} openNotes={openNotes} openSubs={openSubs} handlers={handlers}/>)}
+        </tbody>
+      </table> : <p className="text-[#999999] text-[13px] py-3.5 px-1 italic">Nenhuma demanda {fUser.length ? 'deste responsável ' : ''}neste projeto.</p>}
+
+      <div className="text-[12px] uppercase tracking-[1.5px] text-[#999999] font-bold mt-[18px] mb-2.5">Acompanhamento do projeto</div>
+      <UpdateForm placeholder="Registrar atualização do projeto..." onAdd={txt=>handlers.addUpdate(p.id, txt)}/>
+      <UpdateList updates={p.updates||[]} onDel={idx=>handlers.delUpdate(p.id, idx)}/>
+    </div> : null}
+  </div>;
+}
+
+/* ---------- GANTT ---------- */
+function Gantt({projects, gProj, gSubtasks, projMatches, taskVisible, subVisible, openTask}){
+  const projs = projects.filter(p => gProj==='all' ? (!isArchived(p) && projMatches(p)) : p.id===gProj);
+  const today = todayISO();
+
+  let min=null, max=null;
+  const acc = d => { if(!d) return; if(!min||d<min)min=d; if(!max||d>max)max=d; };
+  projs.forEach(p => {
+    acc(p.due);
+    p.tasks.forEach(t => { if(!taskVisible(t)) return; acc(t.start); acc(t.due); if(gSubtasks) (t.subtasks||[]).forEach(s=>{ if(subVisible(s)) acc(s.date); }); });
+  });
+  const hasDates = min !== null;
+  acc(today);
+  if(!hasDates){
+    return <div className="bg-white border border-[#E3E8EC] rounded-xl pb-3">
+      <p className="text-[#999999] text-[13px] italic p-6">Nenhuma demanda com datas para exibir no Gantt. Preencha início/prazo nas demandas (ou a conclusão prevista dos projetos).</p>
+    </div>;
+  }
+  const d0 = addDays(min,-4), d1 = addDays(max,10);
+  const days = diffDays(d0,d1)+1;
+  const ppd = 26;
+  const W = days*ppd;
+  const X = iso => diffDays(d0,iso)*ppd;
+  const WD = ['D','S','T','Q','Q','S','S'];
+  const prank = t => (PRIOS[t.prioridade] ? PRIOS[t.prioridade].rank : 1);
+
+  // cabeçalho de meses
+  const months = [];
+  let m = parseISO(d0); m = new Date(m.getFullYear(), m.getMonth(), 1);
+  while(toISO(m) <= d1){
+    const mStart = toISO(m) < d0 ? d0 : toISO(m);
+    const mEnd0 = new Date(m.getFullYear(), m.getMonth()+1, 0);
+    const mEnd = toISO(mEnd0) > d1 ? d1 : toISO(mEnd0);
+    months.push({left:X(mStart), width:(diffDays(mStart,mEnd)+1)*ppd, lbl:`${MESES[m.getMonth()]}/${String(m.getFullYear()).slice(2)}`});
+    m = new Date(m.getFullYear(), m.getMonth()+1, 1);
+  }
+  // cabeçalho de dias
+  const dayCells = [];
+  for(let i=0;i<days;i++){
+    const iso = addDays(d0,i);
+    const dt = parseISO(iso);
+    dayCells.push({left:i*ppd, we: dt.getDay()===0||dt.getDay()===6, isToday: iso===today, wd:WD[dt.getDay()], num:dt.getDate()});
+  }
+
+  const firstSat = (6 - parseISO(d0).getDay() + 7) % 7;
+  const trackStyle = {
+    width: W,
+    backgroundImage:
+      `repeating-linear-gradient(90deg,rgba(55,72,86,.05) 0,rgba(55,72,86,.05) ${2*ppd}px,transparent ${2*ppd}px,transparent ${7*ppd}px),` +
+      `repeating-linear-gradient(90deg,transparent 0,transparent ${ppd-1}px,#E9EEF1 ${ppd-1}px,#E9EEF1 ${ppd}px)`,
+    backgroundPosition: `${firstSat*ppd}px 0,0 0`,
+    backgroundRepeat: 'repeat',
+  };
+  const TodayLine = () => <i className="absolute top-0 bottom-0 w-[2px] bg-[#C0392B] opacity-[.55] z-[1]" style={{left:X(today)}} title={'Hoje '+fmtDateShort(today)}></i>;
+  const LBL = 'sticky left-0 z-[3] w-[280px] shrink-0 px-3 py-2 text-[12.5px] border-r border-[#E3E8EC] flex items-center gap-2';
+
+  const rows = [];
+  projs.forEach(p => {
+    const tks = p.tasks.filter(t => taskVisible(t) && (t.start || t.due || (gSubtasks && (t.subtasks||[]).some(s=>subVisible(s) && s.date))))
+      .sort((a,b)=> prank(a)-prank(b) || (((a.start||a.due||'9999') < (b.start||b.due||'9999')) ? -1 : 1));
+    const dated = tks.filter(t => t.start || t.due);
+    let span = null;
+    if(dated.length){
+      const s = dated.reduce((v,t)=>{const d=t.start||t.due; return d<v?d:v;}, '9999');
+      const e = dated.reduce((v,t)=>{const d=t.due||t.start; return d>v?d:v;}, '0000');
+      span = <i className="absolute top-[13px] h-1 rounded-sm opacity-[.45] z-[1]" style={{left:X(s), width:Math.max((diffDays(s,e)+1)*ppd,4), background:p.cp.color}}></i>;
+    }
+    rows.push(
+      <div key={'p:'+p.id} className="flex items-stretch border-b border-[#EDF1F4] bg-[#F4F7F9]">
+        <div className={LBL + ' bg-[#F4F7F9] font-bold text-[#374856] text-[13px]'}>
+          <Avatar name={p.cp.name} color={p.cp.color} size={20} fontSize={9}/>
+          {p.name}{p.due ? <small className="text-[#999999] text-[11px]"> meta {fmtDateShort(p.due)}</small> : null}
+        </div>
+        <div className="relative h-[30px] shrink-0" style={trackStyle}>
+          <TodayLine/>{span}
+          {p.due ? <i className="absolute top-[9px] w-3 h-3 rotate-45 bg-[#374856] border-2 border-white z-[2] cursor-help" style={{left:X(p.due)-6}} title={'Meta do projeto: '+fmtDate(p.due)}></i> : null}
+        </div>
+      </div>
+    );
+    tks.forEach(t => {
+      const dc = dueClass(t);
+      const pr = PRIOS[t.prioridade] || PRIOS.media;
+      const hasOwn = t.start || t.due;
+      let bar = null;
+      if(hasOwn){
+        const s = t.start || t.due, e0 = t.due || t.start;
+        const e = e0 < s ? s : e0;
+        const color = t.status==='done' ? C.teal : dc==='late' ? C.danger : t.status==='doing' ? C.blood : '#B9C6D0';
+        bar = <div className="absolute top-[7px] h-5 rounded-[5px] cursor-pointer z-[2] hover:brightness-110"
+          style={{left:X(s), width:Math.max((diffDays(s,e)+1)*ppd,6), background:color, opacity: t.status==='done' ? .75 : 1}}
+          title={`${t.title} — ${fmtDateShort(t.start)} a ${fmtDateShort(t.due)} · ${t.resp||'—'} · Prioridade ${pr.lbl} · ${STATUS_LABELS[t.status]}${dc==='late' ? ' (ATRASADA)' : ''}`}
+          onClick={()=>openTask(p.id, t.id)}></div>;
+      }
+      rows.push(
+        <div key={'t:'+t.id} className="flex items-stretch border-b border-[#EDF1F4]">
+          <div className={LBL + ' bg-white pl-[30px]'}>
+            <span className="text-[13px] leading-none cursor-help" style={{color:pr.color}} title={'Prioridade '+pr.lbl}>⚑</span>
+            {t.title} <small className="text-[#999999] text-[11px]">· {t.resp||'—'}</small>
+          </div>
+          <div className="relative h-[34px] shrink-0" style={trackStyle}><TodayLine/>{bar}</div>
+        </div>
+      );
+      if(gSubtasks){
+        subSort((t.subtasks||[]).filter(s => s.date && subVisible(s))).forEach(s => {
+          const scol = s.done ? C.teal : (s.date < today ? C.danger : C.blood);
+          const spr = PRIOS[s.prioridade] || PRIOS.media;
+          rows.push(
+            <div key={'s:'+s.id} className="flex items-stretch border-b border-[#EDF1F4]">
+              <div className={LBL + ' bg-[#FCFDFE] pl-12 text-[11.5px] text-[#6b7a86]'}>
+                <span className="text-[13px] leading-none cursor-help" style={{color:spr.color}} title={'Prioridade '+spr.lbl}>⚑</span>
+                <span style={{color:scol}}>◆</span> {s.title}
+                <small className="text-[#999999]"> {s.resp||'—'} · {fmtDateShort(s.date)}{s.done ? ' ✓' : ''}</small>
+              </div>
+              <div className="relative h-6 shrink-0" style={trackStyle}>
+                <TodayLine/>
+                <i className="absolute top-1.5 w-[11px] h-[11px] rotate-45 border-2 border-white z-[2] cursor-help"
+                  style={{left:X(s.date)-5, background:scol}}
+                  title={`${s.title} — acompanhar em ${fmtDateShort(s.date)} · ${s.resp||'sem resp.'} · Prioridade ${spr.lbl}${s.done ? ' (concluída)' : (s.date<today ? ' (ATRASADA)' : '')}`}></i>
+              </div>
+            </div>
+          );
+        });
+      }
+    });
+    if(!tks.length){
+      rows.push(
+        <div key={'e:'+p.id} className="flex items-stretch border-b border-[#EDF1F4]">
+          <div className={LBL + ' bg-white pl-[30px]'}><small className="text-[#999999]">sem demandas com datas</small></div>
+          <div className="relative h-[34px] shrink-0" style={trackStyle}><TodayLine/></div>
+        </div>
+      );
+    }
+  });
+
+  return <div className="bg-white border border-[#E3E8EC] rounded-xl pb-3">
+    <div className="flex gap-[18px] items-center px-4 pt-3 pb-0.5 text-[11.5px] text-[#999999] flex-wrap">
+      <span><i className="inline-block w-3.5 h-2.5 rounded-[3px] mr-[5px] align-middle" style={{background:'#B9C6D0'}}></i>A fazer</span>
+      <span><i className="inline-block w-3.5 h-2.5 rounded-[3px] mr-[5px] align-middle" style={{background:C.blood}}></i>Em andamento</span>
+      <span><i className="inline-block w-3.5 h-2.5 rounded-[3px] mr-[5px] align-middle" style={{background:C.teal}}></i>Concluída</span>
+      <span><i className="inline-block w-3.5 h-2.5 rounded-[3px] mr-[5px] align-middle" style={{background:C.danger}}></i>Atrasada</span>
+      <span><span className="inline-block w-[9px] h-[9px] rotate-45 mr-1.5" style={{background:C.slate}}></span>Meta do projeto</span>
+      <span><span className="inline-block w-2 h-2 rotate-45 mr-1.5" style={{background:C.blood}}></span>Tarefa / checkpoint</span>
+      <span style={{color:C.danger}}>| Hoje</span>
+      <span className="ml-auto">Clique numa barra para editar a demanda</span>
+    </div>
+    <div className="overflow-x-auto pb-1.5">
+      <div className="w-max min-w-full">
+        <div className="flex border-b-2 border-[#E3E8EC]">
+          <div className="sticky left-0 z-[3] bg-white w-[280px] shrink-0 border-r border-[#E3E8EC]"></div>
+          <div style={{width:W}}>
+            <div className="relative h-[26px]" style={{width:W}}>
+              {months.map((mo,i) => (
+                <div key={i} className="absolute top-0 h-full border-l border-[#E3E8EC] text-[11px] font-bold text-[#999999] pt-1.5 pl-1.5 uppercase tracking-wider whitespace-nowrap overflow-hidden"
+                  style={{left:mo.left, width:mo.width}}>{mo.lbl}</div>
+              ))}
+            </div>
+            <div className="relative border-t border-[#E3E8EC] h-8" style={{width:W}}>
+              {dayCells.map((d,i) => (
+                <div key={i}
+                  className={'absolute top-0 h-full border-l border-[#EDF1F4] text-[10px] font-semibold text-center pt-0.5 leading-[1.15] overflow-hidden ' + (d.we ? 'bg-[#F5F8FA] text-[#B7C0C7]' : 'text-[#6b7a86]')}
+                  style={{left:d.left, width:ppd, ...(d.isToday ? {background:'#FBE9E7', color:C.danger} : {})}}>
+                  <span className="block text-[7px] tracking-[.3px] uppercase opacity-75 font-bold leading-[1.2]">{d.wd}</span>{d.num}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {rows.length ? rows : <p className="text-[#999999] text-[13px] italic p-5">Nenhum projeto para exibir.</p>}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ---------- modal projeto ---------- */
+function ProjectModal({p, onSave, onDelete, onClose}){
+  const [name, setName]     = useState(p ? p.name : '');
+  const [desc, setDesc]     = useState(p ? (p.desc||'') : '');
+  const [cpName, setCpName] = useState(p ? (p.cp.name||'') : '');
+  const [color, setColor]   = useState(p ? p.cp.color : PALETTE[0]);
+  const [sit, setSit]       = useState(p ? (p.situacao||'ativo') : 'ativo');
+  const [due, setDue]       = useState(p ? (p.due||'') : '');
+  const [valor, setValor]   = useState(p && p.valor ? fmtNum(p.valor) : '');
+  const [pag, setPag]       = useState(p ? (p.pagamento||'') : '');
+  const nameRef = useRef(null);
+  useEffect(()=>{ nameRef.current && nameRef.current.focus(); }, []);
+  const save = () => {
+    const n = name.trim();
+    if(!n){ nameRef.current.focus(); return; }
+    onSave({ name:n, desc:desc.trim(), cp:{name:cpName.trim(), color}, situacao:sit, due, valor:parseValor(valor), pagamento:pag });
+  };
+  return <Overlay onClose={onClose}>
+    <h2 className="text-[17px] text-[#374856] font-bold mb-[18px]">{p ? 'Editar Projeto' : 'Novo Projeto'}</h2>
+    <Field label="Nome do projeto">
+      <input ref={nameRef} type="text" className={INPUT} placeholder="Ex.: Aquisição CLC Cariacica" value={name} onChange={e=>setName(e.target.value)}/>
+    </Field>
+    <Field label="Descrição (opcional)">
+      <input type="text" className={INPUT} placeholder="Breve contexto do projeto" value={desc} onChange={e=>setDesc(e.target.value)}/>
+    </Field>
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Contraparte">
+        <input type="text" className={INPUT} placeholder="Ex.: Brookfield, Bayer..." value={cpName} onChange={e=>setCpName(e.target.value)}/>
+      </Field>
+      <Field label="Cor da contraparte">
+        <div className="flex gap-2.5">
+          {PALETTE.map(c => (
+            <div key={c} onClick={()=>setColor(c)}
+              className={'w-[30px] h-[30px] rounded-full cursor-pointer border-[3px] ' + (c===color ? 'border-[#262626]' : 'border-transparent')}
+              style={{background:c}}></div>
+          ))}
+        </div>
+      </Field>
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Situação">
+        <select className={INPUT} value={sit} onChange={e=>setSit(e.target.value)}>
+          {Object.entries(SIT_LABELS).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </Field>
+      <Field label="Conclusão prevista">
+        <input type="date" className={INPUT} value={due} onChange={e=>setDue(e.target.value)}/>
+      </Field>
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Valor do projeto (R$)">
+        <input type="text" inputMode="numeric" className={INPUT} placeholder="Ex.: 89.000.000" value={valor} onChange={e=>setValor(e.target.value)}/>
+      </Field>
+      <Field label="Forma de pagamento">
+        <select className={INPUT} value={pag} onChange={e=>setPag(e.target.value)}>
+          <option value="">—</option>
+          <option value="cotas">Cotas</option>
+          <option value="dinheiro">Dinheiro</option>
+          <option value="misto">Misto (cotas + dinheiro)</option>
+        </select>
+      </Field>
+    </div>
+    <div className="flex justify-end gap-2.5 mt-[22px]">
+      {p ? <button className={BTN + ' bg-transparent text-[#C0392B] border border-[#C0392B] mr-auto'} onClick={onDelete}>Excluir projeto</button> : null}
+      <button className={BTN + ' bg-[#EFF3F6] text-[#262626]'} onClick={onClose}>Cancelar</button>
+      <button className={BTN_SLATE} onClick={save}>Salvar</button>
+    </div>
+  </Overlay>;
+}
+
+/* ---------- modal demanda ---------- */
+function TaskModal({t, users, me, onSave, onDelete, onClose, onOpenTeam}){
+  const [title, setTitle]   = useState(t ? t.title : '');
+  const [start, setStart]   = useState(t ? (t.start||'') : todayISO());
+  const [due, setDue]       = useState(t ? (t.due||'') : '');
+  const [respId, setRespId] = useState(t ? (t.respId||'') : (me||''));
+  const [prio, setPrio]     = useState(t ? (t.prioridade||'media') : 'media');
+  const titleRef = useRef(null);
+  useEffect(()=>{ titleRef.current && titleRef.current.focus(); }, []);
+  const sorted = users.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const save = () => {
+    const v = title.trim();
+    if(!v){ titleRef.current.focus(); return; }
+    onSave({ title:v, start, due, respId, prioridade:prio });
+  };
+  return <Overlay onClose={onClose}>
+    <h2 className="text-[17px] text-[#374856] font-bold mb-[18px]">{t ? 'Editar Demanda' : 'Nova Demanda'}</h2>
+    <Field label="Demanda">
+      <input ref={titleRef} type="text" className={INPUT} placeholder="Ex.: Enviar minuta do CCV para revisão" value={title} onChange={e=>setTitle(e.target.value)}/>
+    </Field>
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Data de início">
+        <input type="date" className={INPUT} value={start} onChange={e=>setStart(e.target.value)}/>
+      </Field>
+      <Field label="Prazo de conclusão">
+        <input type="date" className={INPUT} value={due} onChange={e=>setDue(e.target.value)}/>
+      </Field>
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <Field label="Responsável">
+        <select className={INPUT} value={respId} onChange={e=>setRespId(e.target.value)}>
+          <option value="">— sem responsável —</option>
+          {sorted.map(u => <option key={u.id} value={u.id}>{u.name} ({u.type==='externo' ? 'Externo' : 'Guardian'})</option>)}
+        </select>
+        <div className="text-[11.5px] text-[#999999] mt-1">Não está na lista? <a className="text-[#5A98B5] cursor-pointer font-bold" onClick={onOpenTeam}>Cadastrar na Equipe</a></div>
+      </Field>
+      <Field label="Prioridade">
+        <select className={INPUT} value={prio} onChange={e=>setPrio(e.target.value)}>
+          <option value="alta">🔴 Alta</option>
+          <option value="media">🟠 Média</option>
+          <option value="baixa">🔵 Baixa</option>
+        </select>
+      </Field>
+    </div>
+    <div className="flex justify-end gap-2.5 mt-[22px]">
+      {t ? <button className={BTN + ' bg-transparent text-[#C0392B] border border-[#C0392B] mr-auto'} onClick={onDelete}>Excluir demanda</button> : null}
+      <button className={BTN + ' bg-[#EFF3F6] text-[#262626]'} onClick={onClose}>Cancelar</button>
+      <button className={BTN_SLATE} onClick={save}>Salvar</button>
+    </div>
+  </Overlay>;
+}
+
+/* ---------- modal equipe ---------- */
+function TeamModal({state, onAdd, onRename, onSetType, onDel, onClose}){
+  const [name, setName] = useState('');
+  const [type, setType] = useState('guardian');
+  const nameRef = useRef(null);
+  useEffect(()=>{ nameRef.current && nameRef.current.focus(); }, []);
+  const usage = {};
+  state.projects.forEach(p=>p.tasks.forEach(t=>{ if(t.respId) usage[t.respId]=(usage[t.respId]||0)+1; }));
+  const sorted = state.users.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const submit = () => { if(onAdd(name, type)) setName(''); };
+  return <Overlay onClose={onClose}>
+    <h2 className="text-[17px] text-[#374856] font-bold mb-[18px]">Equipe — cadastro de usuários</h2>
+    <div>
+      {sorted.length ? sorted.map(u => (
+        <div key={u.id} className="flex items-center gap-2.5 py-2 border-b border-dashed border-[#E3E8EC] text-[13.5px]">
+          <Avatar name={u.name} color={u.type==='guardian' ? C.navy : C.grey} size={24} fontSize={10}/>
+          <input key={u.id+':'+u.name} defaultValue={u.name} title="Clique para editar o nome"
+            className="flex-1 text-[13.5px] font-semibold text-[#262626] px-1.5 py-1 border border-transparent rounded-md bg-transparent hover:border-[#E3E8EC] focus:outline-none focus:ring-2 focus:ring-[#5A98B5] focus:bg-white"
+            onBlur={e=>onRename(u.id, e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') e.target.blur(); }}/>
+          <span className="text-[11px] text-[#999999] whitespace-nowrap">{usage[u.id]||0} demanda(s)</span>
+          <select value={u.type} onChange={e=>onSetType(u.id, e.target.value)}
+            className="px-1.5 py-1 border border-[#E3E8EC] rounded-md text-[12px] bg-white cursor-pointer">
+            <option value="guardian">Guardian</option>
+            <option value="externo">Externo</option>
+          </select>
+          <button className={ICON_DEL} title="Remover" onClick={()=>onDel(u.id)}>×</button>
+        </div>
+      )) : <p className="text-[#999999] text-[13px] py-3.5 px-1 italic">Nenhum usuário cadastrado ainda.</p>}
+    </div>
+    <div className="flex gap-2 mt-3.5">
+      <input ref={nameRef} type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Nome do novo usuário"
+        onKeyDown={e=>{ if(e.key==='Enter') submit(); }}
+        className="flex-1 px-3 py-2 border border-[#E3E8EC] rounded-lg text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#5A98B5]"/>
+      <select value={type} onChange={e=>setType(e.target.value)} className="px-2 py-2 border border-[#E3E8EC] rounded-lg text-[13px] bg-white cursor-pointer">
+        <option value="guardian">Guardian</option>
+        <option value="externo">Externo</option>
+      </select>
+      <button className={BTN_SLATE_SM} onClick={submit}>Adicionar</button>
+    </div>
+    <p className="text-[11.5px] text-[#999999] mt-2.5">O cadastro evita nomes duplicados ("João" vs "Joao Silva"). As demandas e filtros usam sempre esta lista.</p>
+    <div className="flex justify-end gap-2.5 mt-[22px]">
+      <button className={BTN_SLATE} onClick={onClose}>Fechar</button>
+    </div>
+  </Overlay>;
+}
+
+/* ---------- aplicação ---------- */
+function App({initial}){
+  const stateRef = useRef(initial.state);
+  const revRef = useRef(initial.rev);
+  const [state, setState] = useState(initial.state);
+  const [syncOk, setSyncOk] = useState(initial.syncOk);
+  const [me, setMeState] = useState(localStorage.getItem(ME_KEY) || '');
+
+  const [q, setQ] = useState('');
+  const [fUser, setFUser] = useState([]);
+  const [fPrio, setFPrio] = useState([]);
+  const [fPag, setFPag] = useState([]);
+  const [fSit, setFSit] = useState([]);
+  const [view, setView] = useState('lista');
+  const [gProj, setGProj] = useState('all');
+  const [gSubtasks, setGSubtasks] = useState(true);
+  const [archOpen, setArchOpen] = useState(false);
+  const [expanded, setExpanded] = useState(() => new Set());
+  const [openNotes, setOpenNotes] = useState(() => new Set());
+  const [openSubs, setOpenSubs] = useState(() => new Set());
+
+  const [projModal, setProjModal] = useState(null);   // null | {id: string|null}
+  const [taskModal, setTaskModal] = useState(null);   // null | {pid, tid|null}
+  const [teamOpen, setTeamOpen] = useState(false);
+
+  const modalRef = useRef(false);
+  modalRef.current = !!(projModal || taskModal || teamOpen);
+  const dragSrcRef = useRef(null);
+
+  const setMe = id => { localStorage.setItem(ME_KEY, id); setMeState(id); };
+  const meName = () => { const u = stateRef.current.users.find(u=>u.id===me); return u ? u.name : ''; };
+  const getProject = pid => stateRef.current.projects.find(p=>p.id===pid);
+  const getUserById = id => stateRef.current.users.find(u=>u.id===id);
+
+  /* sincronização */
+  function applyServer(d){
+    const st = (d.state && Array.isArray(d.state.projects)) ? d.state : {users:[], projects:[]};
+    migrate(st);
+    stateRef.current = st; revRef.current = d.rev;
+    setState(st);
+  }
+  async function push(next){
+    if(!REMOTE) return;
+    try{
+      const r = await authFetch('/data', {
+        method:'POST',
+        headers:{'Content-Type':'application/json', 'X-Base-Rev':String(revRef.current)},
+        body: JSON.stringify(next),
+      });
+      if(r.status === 409){
+        const d = await r.json();
+        applyServer(d);
+        alert('Outro usuário acabou de salvar alterações. A tela foi atualizada com a versão mais recente — repita sua última alteração.');
+        return;
+      }
+      const d = await r.json();
+      revRef.current = d.rev;
+      setSyncOk(true);
+    }catch(e){ setSyncOk(false); }
+  }
+  function update(fn){
+    const next = structuredClone(stateRef.current);
+    fn(next);
+    stateRef.current = next;
+    setState(next);
+    localStorage.setItem(LS_KEY, JSON.stringify(next));
+    push(next);
+  }
+  function replaceState(data){
+    migrate(data);
+    stateRef.current = data;
+    setState(data);
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    push(data);
+  }
+  function editingNow(){
+    if(modalRef.current) return true;
+    const el = document.activeElement;
+    if(el && (el.tagName==='TEXTAREA' || el.tagName==='INPUT' || el.tagName==='SELECT')) return true;
+    for(const ta of document.querySelectorAll('textarea')) if(ta.value.trim()) return true;
+    return false;
+  }
+  useEffect(() => {
+    if(!REMOTE) return;
+    if(initial.needsPush) push(stateRef.current);
+    const t = setInterval(async () => {
+      if(editingNow()) return;
+      try{
+        const r = await authFetch('/data', {cache:'no-store'});
+        const d = await r.json();
+        if(d.rev !== revRef.current) applyServer(d);
+        setSyncOk(true);
+      }catch(e){ setSyncOk(false); }
+    }, 4000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    const h = e => { if(e.key === 'Escape'){ setProjModal(null); setTaskModal(null); setTeamOpen(false); } };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, []);
+
+  /* filtros */
+  const filterOn = fUser.length > 0 || fPrio.length > 0;
+  const subVisible = s => (!fUser.length || fUser.includes(s.respId))
+                       && (!fPrio.length || fPrio.includes(s.prioridade||'media'));
+  // demanda visível se ela mesma casa os filtros OU se alguma tarefa dela casa
+  const taskVisible = t => ((!fUser.length || fUser.includes(t.respId))
+                         && (!fPrio.length || fPrio.includes(t.prioridade||'media')))
+                         || (t.subtasks||[]).some(subVisible);
+  const projMatches = p => {
+    const s = q.toLowerCase();
+    if(s && !p.name.toLowerCase().includes(s) && !(p.cp.name||'').toLowerCase().includes(s)) return false;
+    if(fPag.length && !fPag.includes(p.pagamento||'')) return false;
+    if(filterOn && !p.tasks.some(taskVisible)) return false;
+    return true;
+  };
+  const toggleIn = (set, id) => { const n = new Set(set); n.has(id) ? n.delete(id) : n.add(id); return n; };
+
+  /* handlers de mutação (mesma semântica do painel original) */
+  const handlers = {
+    toggleProject: pid => setExpanded(s => toggleIn(s, pid)),
+    toggleNotes: tid => setOpenNotes(s => toggleIn(s, tid)),
+    toggleSubs: tid => setOpenSubs(s => toggleIn(s, tid)),
+    openProject: pid => setProjModal({id: pid}),
+    openTask: (pid, tid) => setTaskModal({pid, tid}),
+    setStatus: (pid, tid, val) => update(s => { const t = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid); if(t) t.status = val; }),
+    addUpdate: (pid, txt) => update(s => { s.projects.find(p=>p.id===pid).updates.push({ts:Date.now(), text:txt, author: meName()}); }),
+    delUpdate: (pid, idx) => update(s => { s.projects.find(p=>p.id===pid).updates.splice(idx,1); }),
+    addTaskUpdate: (pid, tid, txt) => update(s => {
+      const t = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid);
+      (t.updates = t.updates||[]).push({ts:Date.now(), text:txt, author: meName()});
+    }),
+    delTaskUpdate: (pid, tid, idx) => update(s => { s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid).updates.splice(idx,1); }),
+    addSub: (pid, tid, data) => update(s => {
+      const t = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid);
+      const u = s.users.find(u=>u.id===data.respId);
+      (t.subtasks = t.subtasks||[]).push({
+        id: uid(), title: data.title, date: data.date||'', done: false,
+        respId: u ? u.id : '', resp: u ? u.name : '', type: u ? u.type : 'guardian',
+        prioridade: data.prioridade || 'media',
+      });
+    }),
+    toggleSubDone: (pid, tid, sid, v) => update(s => { const x = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid).subtasks.find(x=>x.id===sid); if(x) x.done = v; }),
+    renameSub: (pid, tid, sid, val) => {
+      const v = (val||'').trim();
+      if(!v) return;
+      update(s => { const x = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid).subtasks.find(x=>x.id===sid); if(x) x.title = v; });
+    },
+    setSubResp: (pid, tid, sid, rid) => update(s => {
+      const x = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid).subtasks.find(x=>x.id===sid);
+      if(!x) return;
+      const u = s.users.find(u=>u.id===rid);
+      x.respId = u ? u.id : ''; x.resp = u ? u.name : ''; x.type = u ? u.type : 'guardian';
+    }),
+    setSubPrio: (pid, tid, sid, val) => update(s => { const x = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid).subtasks.find(x=>x.id===sid); if(x) x.prioridade = val; }),
+    setSubDate: (pid, tid, sid, val) => update(s => { const x = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid).subtasks.find(x=>x.id===sid); if(x) x.date = val; }),
+    delSub: (pid, tid, sid) => update(s => { const t = s.projects.find(p=>p.id===pid).tasks.find(t=>t.id===tid); t.subtasks = (t.subtasks||[]).filter(x=>x.id!==sid); }),
+    moveProject: (srcId, targetId, below) => {
+      if(!srcId || srcId === targetId) return;
+      update(s => {
+        const arr = s.projects;
+        const from = arr.findIndex(p=>p.id===srcId);
+        if(from < 0) return;
+        const [moved] = arr.splice(from, 1);
+        let to = arr.findIndex(p=>p.id===targetId);
+        if(to < 0){ arr.splice(from, 0, moved); return; }  // alvo sumiu: desfaz
+        if(below) to += 1;
+        arr.splice(to, 0, moved);
+      });
+    },
+  };
+
+  /* projeto: salvar / excluir */
+  const saveProject = data => {
+    const editingId = projModal && projModal.id;
+    update(s => {
+      if(editingId){
+        Object.assign(s.projects.find(p=>p.id===editingId), data);
+      } else {
+        const p = { id: uid(), updates:[], tasks:[], ...data };
+        s.projects.unshift(p);
+        setExpanded(prev => { const n = new Set(prev); n.add(p.id); return n; });
+      }
+    });
+    setProjModal(null);
+  };
+  const deleteProject = () => {
+    const p = getProject(projModal.id);
+    if(!confirm(`Excluir o projeto "${p.name}" e todas as suas demandas?\n\nDica: para tirá-lo do painel sem perder o histórico, use a Situação (Concluído/Cancelado/Stand-by).`)) return;
+    update(s => { s.projects = s.projects.filter(x=>x.id!==projModal.id); });
+    setProjModal(null);
+  };
+
+  /* demanda: salvar / excluir */
+  const saveTask = data => {
+    const {pid, tid} = taskModal;
+    update(s => {
+      const u = s.users.find(u=>u.id===data.respId);
+      const full = { ...data, respId: u ? u.id : '', resp: u ? u.name : '', type: u ? u.type : 'guardian' };
+      const p = s.projects.find(p=>p.id===pid);
+      if(tid){
+        Object.assign(p.tasks.find(t=>t.id===tid), full);
+      } else {
+        p.tasks.push({ id: uid(), status:'todo', updates:[], subtasks:[], ...full });
+      }
+    });
+    setTaskModal(null);
+  };
+  const deleteTask = () => {
+    const {pid, tid} = taskModal;
+    const t = getProject(pid).tasks.find(t=>t.id===tid);
+    if(!confirm(`Excluir a demanda "${t.title}"?`)) return;
+    update(s => { const p = s.projects.find(p=>p.id===pid); p.tasks = p.tasks.filter(x=>x.id!==tid); });
+    setTaskModal(null);
+  };
+
+  /* equipe */
+  const teamAdd = (name, type) => {
+    const n = (name||'').trim().replace(/\s+/g,' ');
+    if(!n) return false;
+    const norm = x => x.trim().toLowerCase().replace(/\s+/g,' ');
+    if(stateRef.current.users.some(u=>norm(u.name)===norm(n))){ alert('Já existe um usuário com esse nome.'); return false; }
+    update(s => { s.users.push({ id: uid(), name: n, type }); });
+    return true;
+  };
+  const teamRename = (id, val) => {
+    const u = getUserById(id);
+    if(!u) return;
+    const name = (val||'').trim().replace(/\s+/g,' ');
+    if(!name || name === u.name) return;
+    const norm = x => x.trim().toLowerCase().replace(/\s+/g,' ');
+    if(stateRef.current.users.some(x=>x.id!==id && norm(x.name)===norm(name))){ alert('Já existe outro usuário com esse nome.'); return; }
+    update(s => {
+      s.users.find(u=>u.id===id).name = name;
+      s.projects.forEach(p=>p.tasks.forEach(t=>{
+        if(t.respId===id) t.resp = name;
+        (t.subtasks||[]).forEach(x=>{ if(x.respId===id) x.resp = name; });
+      }));
+    });
+  };
+  const teamSetType = (id, type) => update(s => {
+    const u = s.users.find(u=>u.id===id);
+    if(!u) return;
+    u.type = type;
+    s.projects.forEach(p=>p.tasks.forEach(t=>{
+      if(t.respId===id) t.type = type;
+      (t.subtasks||[]).forEach(x=>{ if(x.respId===id) x.type = type; });
+    }));
+  });
+  const teamDel = id => {
+    const u = getUserById(id);
+    if(!confirm(`Remover "${u.name}" do cadastro? As demandas dele mantêm o nome, mas ficam sem vínculo para filtros.`)) return;
+    update(s => {
+      s.users = s.users.filter(x=>x.id!==id);
+      s.projects.forEach(p=>p.tasks.forEach(t=>{
+        if(t.respId===id) t.respId='';
+        (t.subtasks||[]).forEach(x=>{ if(x.respId===id){ x.respId=''; x.resp=''; } });
+      }));
+    });
+    if(me===id){ localStorage.removeItem(ME_KEY); setMeState(''); }
+    if(fUser.includes(id)) setFUser(f => f.filter(x=>x!==id));
+  };
+
+  /* backup */
+  const exportJSON = () => {
+    const blob = new Blob([JSON.stringify(stateRef.current,null,2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `guardian_projetos_${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  const importJSON = input => {
+    const file = input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const data = JSON.parse(reader.result);
+        if(!Array.isArray(data.projects)) throw new Error('formato inválido');
+        if(!confirm('Importar backup? Os dados atuais serão substituídos.')) return;
+        replaceState(data);
+      }catch(e){ alert('Arquivo inválido: ' + e.message); }
+    };
+    reader.readAsText(file);
+    input.value = '';
+  };
+
+  /* lista de projetos filtrada */
+  const all = state.projects.filter(projMatches);
+  let main = [], arch = [];
+  if(fSit.length === 0){ main = all.filter(p=>!isArchived(p)); arch = all.filter(isArchived); }
+  else { main = all.filter(p => fSit.includes(p.situacao||'ativo')); }
+
+  // reordenar só sem busca/filtros ativos (mesma regra da versão original)
+  const canDrag = !(q || fUser.length || fPrio.length || fPag.length || fSit.length);
+  const cardProps = {expanded, users: state.users, me, fUser, taskVisible, subVisible, openNotes, openSubs, handlers, canDrag, dragSrcRef};
+  const projModalP = projModal && projModal.id ? state.projects.find(p=>p.id===projModal.id) : null;
+  const taskModalT = taskModal && taskModal.tid ? (state.projects.find(p=>p.id===taskModal.pid)||{tasks:[]}).tasks.find(t=>t.id===taskModal.tid) : null;
+
+  return <div>
+    <Header syncOk={syncOk} users={state.users} me={me} setMe={setMe}
+      onNewProject={()=>setProjModal({id:null})} onTeam={()=>setTeamOpen(true)}
+      onExport={exportJSON} onImport={importJSON}/>
+
+    <main className="max-w-[1240px] mx-auto px-6 pt-[26px] pb-20">
+      <KPIs state={state}/>
+      <Toolbar q={q} setQ={setQ} fUser={fUser} setFUser={setFUser} fPrio={fPrio} setFPrio={setFPrio}
+        fPag={fPag} setFPag={setFPag} fSit={fSit} setFSit={setFSit}
+        view={view} setView={setView} gProj={gProj} setGProj={setGProj}
+        gSubtasks={gSubtasks} setGSubtasks={setGSubtasks}
+        users={state.users} projects={state.projects}/>
+
+      {view === 'gantt'
+        ? <Gantt projects={state.projects} gProj={gProj} gSubtasks={gSubtasks}
+            projMatches={projMatches} taskVisible={taskVisible} subVisible={subVisible}
+            openTask={(pid,tid)=>handlers.openTask(pid,tid)}/>
+        : <div>
+            {main.length
+              ? main.map(p => <ProjectCard key={p.id} p={p} {...cardProps}/>)
+              : <p className="text-[#999999] text-[13px] py-3.5 px-1 italic">Nenhum projeto encontrado.</p>}
+            {fSit.length === 0 && arch.length ? <div>
+              <button className="bg-transparent border-0 text-[13px] font-bold text-[#999999] hover:text-[#374856] cursor-pointer px-1 py-2.5 mt-2 tracking-wider uppercase"
+                onClick={()=>setArchOpen(!archOpen)}>
+                {archOpen ? '▾' : '▸'} Arquivados ({arch.length}) — concluídos, cancelados e stand-by
+              </button>
+              {archOpen ? arch.map(p => <ProjectCard key={p.id} p={p} {...cardProps}/>) : null}
+            </div> : null}
+          </div>}
+
+      <p className="text-center text-[11.5px] text-[#999999] mt-[30px]">
+        Dados compartilhados por todos os usuários e salvos no banco Guardian (Supabase), com o mesmo login do Pipeline. Use <b>Exportar backup</b> periodicamente.<br/>
+        Confidencial | Guardian Gestora Ltda.
+      </p>
+    </main>
+
+    {projModal ? <ProjectModal p={projModalP} onSave={saveProject}
+      onDelete={deleteProject} onClose={()=>setProjModal(null)}/> : null}
+    {taskModal ? <TaskModal t={taskModalT} users={state.users} me={me} onSave={saveTask}
+      onDelete={deleteTask} onClose={()=>setTaskModal(null)} onOpenTeam={()=>setTeamOpen(true)}/> : null}
+    {teamOpen ? <TeamModal state={state} onAdd={teamAdd} onRename={teamRename}
+      onSetType={teamSetType} onDel={teamDel} onClose={()=>setTeamOpen(false)}/> : null}
+  </div>;
+}
+
+/* ---------- raiz (gate de autenticação + carga inicial) ---------- */
+function Root(){
+  const [initial, setInitial] = useState(null);
+  useEffect(() => { (async () => {
+    if(REMOTE){
+      const { data: { session } } = await _supa.auth.getSession();
+      if(!session){ location.href = '/'; return; }
+      try{
+        const r = await authFetch('/data', {cache:'no-store'});
+        const d = await r.json();
+        let st = (d.state && Array.isArray(d.state.projects)) ? d.state : {users:[], projects:[]};
+        let needsPush = false;
+        if(d.rev === 0 && !st.projects.length){ st = seed(); needsPush = true; }
+        if(migrate(st)) needsPush = true;
+        setInitial({rev: d.rev, state: st, syncOk: true, needsPush});
+      }catch(e){
+        const st = loadLocal(); migrate(st);
+        setInitial({rev: 0, state: st, syncOk: false, needsPush: false});
+      }
+    } else {
+      const st = loadLocal(); migrate(st);
+      setInitial({rev: 0, state: st, syncOk: false, needsPush: false});
+    }
+  })(); }, []);
+  if(!initial) return <div className="flex items-center justify-center min-h-screen text-[#999999] text-[14px]">Carregando…</div>;
+  return <App initial={initial}/>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+</script>
+</body>
+</html>
