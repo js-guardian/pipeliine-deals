@@ -470,7 +470,7 @@ function KpiCard({ label, value, sub, delta, deltaHint, values, color }) {
       style={{ fontFamily: "'Avenir Next LT Pro','Avenir Next',Avenir,'Segoe UI',Helvetica,Arial,sans-serif" }}>
       <div className="text-[9.5px] uppercase font-semibold tracking-[.1em] text-[#75808A] mb-[6px]">{label}</div>
       <div className="flex items-baseline justify-between gap-2">
-        <div className="text-[18px] font-semibold text-[#262626] tracking-[-.01em]" style={{ fontVariantNumeric: "tabular-nums" }}>{value}</div>
+        <div className="text-[24px] font-semibold text-[#262626] tracking-[-.01em]" style={{ fontVariantNumeric: "tabular-nums" }}>{value}</div>
         {deltaStr ? (
           <div className="mono text-[11px] font-semibold" style={{ color: deltaColor }}
             title={delta == null ? "Sem base de comparação no período anterior" : (deltaHint || "Variação vs. período anterior")}>
@@ -715,9 +715,6 @@ function DashboardPage({ deals }) {
             placeholder="Status — Todos"
             width={200}
           />
-          <div className="text-[12px]" style={{ color: "var(--text-2)" }}>
-            <span className="mono">{TODAY.toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" })}</span> · visão geral do pipeline
-          </div>
         </div>
       </div>
       <div className="text-[13px] mb-6" style={{ color: "var(--text-2)" }}>
@@ -2238,10 +2235,52 @@ function Field({ label, children }) {
   );
 }
 
-function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
+function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch, showToast }) {
   const [tab, setTab] = useState("ident");
+  const [criandoProjeto, setCriandoProjeto] = useState(false);
   const isPortfolio = deal.perfil_ativo === "PORTFOLIO";
   if (!deal) return null;
+
+  // Cria um projeto no Painel de Projetos a partir deste deal (mesmo formato do modal "Novo Projeto")
+  const criarProjeto = async () => {
+    const name = (deal.produto || "").trim();
+    if (!name) { alert("Este deal não tem nome — preencha o campo Produto antes."); return; }
+    setCriandoProjeto(true);
+    try {
+      const post = async () => {
+        const r = await authFetch("/data", { cache: "no-store" });
+        const d = await r.json();
+        const state = (d.state && Array.isArray(d.state.projects)) ? d.state : { users: [], projects: [] };
+        if (state.projects.some(p => (p.name || "").trim().toLowerCase() === name.toLowerCase())) {
+          alert(`Já existe um projeto chamado "${name}" no Painel de Projetos.`);
+          return true; // tratado — não recriar
+        }
+        const dt = new Date(); dt.setDate(dt.getDate() + 30);
+        const due = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+        const pagamento = { COTAS: "cotas", CASH: "dinheiro", CETIPADO: "dinheiro" }[(deal.estrategia || "").toUpperCase()] || "";
+        state.projects.unshift({
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+          name, desc: "", cp: { name: "", color: "#39537A" },
+          situacao: "ativo", due, valor: Number(deal.ultimo_valor) || "", pagamento,
+          updates: [], tasks: [],
+        });
+        const w = await authFetch("/data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Base-Rev": String(d.rev) },
+          body: JSON.stringify(state),
+        });
+        if (w.status === 409) return false; // outra gravação no meio: recarrega e tenta 1x de novo
+        if (!w.ok) throw new Error("HTTP " + w.status);
+        showToast && showToast("Projeto criado com sucesso");
+        return true;
+      };
+      if (!(await post())) if (!(await post())) alert("O painel está sendo salvo por outro usuário — tente novamente.");
+    } catch (e) {
+      alert("Não foi possível criar o projeto: " + e.message);
+    } finally {
+      setCriandoProjeto(false);
+    }
+  };
 
   const updateField = (key, val) => {
     const updated = { ...deal, [key]: val, updated_at: new Date().toISOString() };
@@ -2267,7 +2306,12 @@ function Drawer({ deal, onClose, onChange, onEdit, onSave, authFetch }) {
           <div className="flex items-center gap-2 mt-3">
             <StatusEditor status={deal.status} onChange={(s) => updateField("status", s)} />
             <RespEditor resp={deal.responsavel} onChange={(r) => updateField("responsavel", r)} />
-            <span className="text-[11px] mono ml-auto" style={{ color: "var(--text-2)" }}>{relTime(deal.updated_at)}</span>
+            <button onClick={criarProjeto} disabled={criandoProjeto}
+              className="ml-auto text-[11px] font-semibold px-3 py-1.5"
+              style={{ background: "#374856", color: "#fff", borderRadius: 2, opacity: criandoProjeto ? .6 : 1, cursor: criandoProjeto ? "default" : "pointer" }}
+              title="Criar um projeto no Painel de Projetos a partir deste deal">
+              {criandoProjeto ? "Criando…" : "Criar Projeto"}
+            </button>
           </div>
         </div>
 
@@ -2763,7 +2807,7 @@ function App({ session }) {
     headers: { "Authorization": `Bearer ${session.access_token}`, ...(opts.headers || {}) },
   });
 
-  const [view, setView] = useState("dashboard");
+  const [view, setView] = useState(window.location.hash === "#deals" ? "deals" : "dashboard");
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drawerId, setDrawerId] = useState(null);
@@ -2873,6 +2917,7 @@ function App({ session }) {
           onEdit={(d) => openModal(d)}
           onSave={handleDrawerSave}
           authFetch={authFetch}
+          showToast={showToast}
         />
       )}
 
