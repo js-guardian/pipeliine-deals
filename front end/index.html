@@ -2802,10 +2802,12 @@ function LoginScreen() {
 
 // ---------- APP ----------
 function App({ session }) {
-  const authFetch = (url, opts = {}) => fetch(url, {
-    ...opts,
-    headers: { "Authorization": `Bearer ${session.access_token}`, ...(opts.headers || {}) },
-  });
+  // A identidade vem do cookie do Guardian HUB, na mesma origem: o navegador o
+  // envia sozinho. Sem token no cabeçalho — o login do Supabase saiu.
+  // 401 = sessão do painel vencida; "/" leva ao gate, que devolve ao HUB.
+  const authFetch = (url, opts = {}) =>
+    fetch(url, { ...opts, credentials: "same-origin" })
+      .then(r => { if (r.status === 401) location.href = "/"; return r; });
 
   const [view, setView] = useState(window.location.hash === "#deals" ? "deals" : "dashboard");
   const [deals, setDeals] = useState([]);
@@ -2882,7 +2884,9 @@ function App({ session }) {
     setModal(null);
   };
 
-  const handleLogout = async () => { await _supa.auth.signOut(); };
+  // Este painel não tem mais login próprio; "Sair" volta ao Guardian HUB, que é
+  // quem controla a sessão. A sessão local do painel vence sozinha (teto de 8h).
+  const handleLogout = () => { location.href = session.hub || "/"; };
 
   if (loading) {
     return (
@@ -2935,17 +2939,20 @@ function App({ session }) {
   );
 }
 
-// ---------- ROOT (auth gate) ----------
-const _DEV_SKIP_AUTH = false; // login ativo
-
+// ---------- ROOT ----------
+// Quem autentica é o Guardian HUB. Se esta página carregou, o gate já conferiu
+// o passe; aqui só perguntamos ao backend quem é a pessoa, para o App seguir
+// recebendo `session` no mesmo formato de antes ({ user: { email } }).
+// A LoginScreen do Supabase abaixo ficou sem uso — sai na limpeza posterior.
 function Root() {
   const [session, setSession] = useState(undefined);
 
   useEffect(() => {
-    if (_DEV_SKIP_AUTH) { setSession({ access_token: "dev", user: { email: "dev@local" } }); return; }
-    _supa.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: { subscription } } = _supa.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
-    return () => subscription.unsubscribe();
+    fetch("/api/eu", { credentials: "same-origin" })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(eu => setSession({ access_token: null, user: { email: eu.email, nome: eu.nome }, hub: eu.hub }))
+      // sem sessão do painel: "/" cai no gate, que devolve ao HUB
+      .catch(() => { location.href = "/"; });
   }, []);
 
   if (session === undefined) {
@@ -2955,7 +2962,6 @@ function Root() {
       </div>
     );
   }
-  if (!session) return <LoginScreen />;
   return <App session={session} />;
 }
 

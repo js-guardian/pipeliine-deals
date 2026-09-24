@@ -89,10 +89,12 @@ const REMOTE = location.protocol === 'http:' || location.protocol === 'https:';
 const SUPABASE_URL      = "https://varkabkouznhupdisdcg.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhcmthYmtvdXpuaHVwZGlzZGNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNDgzNjEsImV4cCI6MjA5MjYyNDM2MX0.yZZez0QFu2WSQ1-6_paBBD7D7GQM9heWN9SGp28PCc0";
 const _supa = REMOTE ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+/* A identidade vem do cookie do Guardian HUB, na mesma origem: o navegador o
+   envia sozinho, sem token no cabeçalho. Quem chegou aqui já passou pelo gate.
+   401 = sessão do painel vencida; '/' cai no gate, que devolve ao HUB. */
+let _HUB = '/';   // preenchido por /api/eu; e para onde o botao Sair leva
 async function authFetch(url, opts = {}){
-  const { data } = await _supa.auth.getSession();
-  if(!data.session){ location.href = '/'; throw new Error('sessão expirada'); }
-  const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), 'Authorization': 'Bearer ' + data.session.access_token } });
+  const r = await fetch(url, { ...opts, credentials: 'same-origin' });
   if(r.status === 401 || r.status === 403){ location.href = '/'; throw new Error('não autorizado'); }
   return r;
 }
@@ -239,7 +241,8 @@ function NavIcon({ name }) {
 }
 function SidebarNav({ email }) {
   const initials = email ? email.slice(0, 2).toUpperCase() : "??";
-  const sair = async () => { try { if (_supa) await _supa.auth.signOut(); } catch (e) {} location.href = "/"; };
+  // Sem login proprio, "Sair" volta ao Guardian HUB, que controla a sessao.
+  const sair = () => { location.href = _HUB; };
   return (
     <aside className="flex flex-col shrink-0" style={{ width: 168, background: "#374856", height: "100vh", position: "sticky", top: 0 }}>
       <div className="px-4 flex flex-col justify-center shrink-0" style={{ height: 84 }}>
@@ -1047,7 +1050,14 @@ function App({initial}){
   const [taskModal, setTaskModal] = useState(null);   // null | {pid, tid|null}
   const [teamOpen, setTeamOpen] = useState(false);
   const [email, setEmail] = useState('');
-  useEffect(() => { if (REMOTE && _supa) _supa.auth.getSession().then(({ data }) => setEmail(data.session ? data.session.user.email : '')); }, []);
+  // quem esta logado, segundo o Guardian HUB (era o session.user do Supabase)
+  useEffect(() => {
+    if (!REMOTE) return;
+    fetch('/api/eu', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(eu => { if (eu) { setEmail(eu.email || ''); if (eu.hub) _HUB = eu.hub; } })
+      .catch(() => {});
+  }, []);
 
   const modalRef = useRef(false);
   modalRef.current = !!(projModal || taskModal || teamOpen);
@@ -1378,8 +1388,8 @@ function Root(){
   const [initial, setInitial] = useState(null);
   useEffect(() => { (async () => {
     if(REMOTE){
-      const { data: { session } } = await _supa.auth.getSession();
-      if(!session){ location.href = '/'; return; }
+      // sem checagem de sessao aqui: quem carregou a pagina passou pelo gate do
+      // HUB, e o authFetch redireciona sozinho se a sessao do painel venceu
       try{
         const r = await authFetch('/data', {cache:'no-store'});
         const d = await r.json();

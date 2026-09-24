@@ -7,7 +7,7 @@ from datetime import date
 
 import jwt
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -16,6 +16,9 @@ from typing import Optional
 from sqlalchemy import text
 
 from conn_db import get_engine, read_table, insert_deal
+# _hub_url e privado do modulo, mas o modulo e nosso: evita repetir aqui a
+# normalizacao do endereco (https ausente, barra no fim) que ele ja faz.
+from guardian_sso import proteger_fastapi, _hub_url
 
 # ---------- GOOGLE DRIVE ----------
 _DRIVE_ROOT_FOLDER_ID = os.getenv("DRIVE_ROOT_FOLDER_ID", "11VapUMvFXXmIG5LD88WaoOKrKxvVxD-P")
@@ -99,6 +102,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Gate do Guardian HUB. Registrado DEPOIS do CORS de proposito: no Starlette o
+# ultimo middleware acrescentado e o mais externo, entao o gate roda primeiro
+# e nenhuma rota abaixo recebe requisicao sem passe validado.
+# /healthz fica livre para o healthcheck da plataforma; /api/version tambem,
+# porque ja era publica e nao entrega dado.
+proteger_fastapi(app, slug="pipeline", rotas_livres=("/healthz", "/api/version"))
+
 @app.on_event("startup")
 def run_migrations():
     try:
@@ -139,7 +149,9 @@ def _get_jwks() -> dict:
     with urllib.request.urlopen(url, timeout=5) as r:
         return json.loads(r.read())
 
-def require_auth(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict:
+def _require_auth_supabase(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict:
+    """Validacao antiga, pelo token do Supabase. Nao e mais usada por nenhuma
+    rota — fica so ate a limpeza, depois de confirmar o gate em producao."""
     token = creds.credentials
     try:
         header = jwt.get_unverified_header(token)
@@ -169,6 +181,20 @@ def require_auth(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict
     except Exception as e:
         print(f"[AUTH ERROR] {type(e).__name__}: {e}")
         raise HTTPException(status_code=401, detail=f"Token inválido: {e}")
+
+
+def require_auth(request: Request) -> dict:
+    """Quem esta chamando, segundo o Guardian HUB.
+
+    Mantem o nome e o formato (dict) que as 23 rotas ja consomem via
+    Depends(require_auth), entao nenhuma rota precisou mudar. O gate ja
+    barrou quem nao tinha passe antes de chegar aqui; o 401 abaixo e so
+    defensivo, para o caso de alguem registrar uma rota fora do gate.
+    """
+    usuario = getattr(request.state, "guardian_user", None)
+    if not usuario:
+        raise HTTPException(status_code=401, detail="Sessao do Guardian HUB ausente")
+    return usuario
 
 
 # ---------- HELPERS ----------
@@ -223,6 +249,24 @@ def row_to_deal(row: dict) -> dict:
 
 
 # ---------- ROUTES ----------
+@app.get("/healthz")
+def healthz():
+    """Liveness para o Railway. Nao toca no banco de proposito."""
+    return {"ok": True}
+
+
+@app.get("/api/eu")
+def eu(usuario: dict = Depends(require_auth)):
+    """Quem esta logado, para o front mostrar o e-mail e saber para onde e o
+    botao Sair. Substitui o session.user do Supabase que o front lia antes."""
+    return {
+        "email": usuario.get("email", ""),
+        "nome": usuario.get("nome", ""),
+        "admin": bool(usuario.get("adm")),
+        "hub": _hub_url(),
+    }
+
+
 @app.get("/api/version")
 def version():
     return {"version": "2025-05-12-v2", "db": bool(os.getenv("DATABASE_URL"))}
